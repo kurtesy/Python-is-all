@@ -1,0 +1,143 @@
+
+<html>
+<head><h2>Game Scheduling</h2>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+      <link rel="stylesheet" href="//code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+      <link rel="stylesheet" href="//jqueryui.com/resources/demos/style.css">
+      <link rel="stylesheet" type="text/css" href="/jquery.datetimepicker.css"/ >
+       <script src="/jquery.js"></script>
+        <script src="/build/jquery.datetimepicker.full.min.js"></script>
+      <script src="https://code.jquery.com/jquery-1.12.4.js"></script>
+      <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+      <script>
+      $( function()
+          {
+            $( "#datepicker" ).datepicker();
+            $(" #datetimepicker_start_time ").datetimepicker({startDate:"+1971/05/01"});
+          } 
+      );
+      </script>
+      
+      <style>
+        form {
+          /* Just to center the form on the page */
+          margin: 0 auto;
+          width: 600px;
+          /* To see the outline of the form */
+          padding: 1em;
+          border: 1px solid #CCC;
+          border-radius: 1em;
+        }
+        
+        form div + div {
+          margin-top: 1em;
+        }
+        
+        label {
+          /* To make sure that all labels have the same size and are properly aligned */
+          display: inline-block;
+          width: 200px;
+          text-align: right;
+        }
+        
+        input, textarea {
+          /* To make sure that all text fields have the same font settings
+             By default, textareas have a monospace font */
+          font: 1em sans-serif;
+        
+          /* To give the same size to all text fields */
+          width: 300px;
+          box-sizing: border-box;
+        
+          /* To harmonize the look & feel of text field border */
+          border: 1px solid #999;
+        }
+        
+        input:focus, textarea:focus {
+          /* To give a little highlight on active elements */
+          border-color: #000;
+        }
+        
+        textarea {
+          /* To properly align multiline text fields with their labels */
+          vertical-align: top;
+        
+          /* To give enough room to type some text */
+          height: 5em;
+        }
+        
+        .button {
+          /* To position the buttons to the same position of the text fields */
+          padding-left: 90px; /* same size as the label elements */
+        }
+        
+        button {
+          /* This extra margin represent roughly the same space as the space
+             between the labels and their text fields */
+          margin-left: .5em;
+        }
+      </style>
+    <title>Game Scheduling</title>
+</head>
+<body>
+    <form action="/search/" method="get">
+        <label for="game_id">Game id:</label>
+        <input type="text" id="game_id" name="game_id" value="1">
+        <br>
+        <label for="stream_id">Stream id:</label>
+        <input type="text" id="stream_id" name="stream_id" value="1">
+        <br>
+        <label for="datetimepicker_start_time">Start time:</label>
+        <input type="text" id="datetimepicker_start_time" name="datetimepicker_start_time">
+        <!--<input type="text" id="datetime24" data-format="DD-MM-YYYY HH:mm" data-template="DD / MM / YYYY     HH : mm" name="datetime" value="21-12-2012 20:30">-->
+        <br>
+        <label for="duration">Duration(in minutes):</label>
+        <input type="text" id="duration" name="duration" value="5">
+        <br>
+        <label for="linked_config">Linked config:</label>
+        <input type="text" id="linked_config" name="linked_config" value="{'destination_room_id': 2}">
+        <br>
+        <label for="day_rec">Day Recurrence:</label>
+        <select>
+          <option>Every 1 min</option>
+          <option>Every 5 min</option>
+          <option>Every 10 min</option>
+        </select>
+        <br>
+        <label for="recur">Recurrance pattern:</label>
+        <select>
+          <option>Weekly</option>
+          <option>Quarterly</option>
+          <option>Monthly</option>
+          <option>Yearly</option>
+          <option>Daily</option>
+        </select>
+        <br>
+        <label for="dow">Day of the week:</label><br>
+            <input type="checkbox" name="monday" value="Monday">Monday<br>
+            <input type="checkbox" name="tuesday" value="Tuesday">Tuesday<br>
+            <input type="checkbox" name="wednesday" value="Wednesday">Wednesday<br>
+            <input type="checkbox" name="thursday" value="Thursday">Thursday<br>
+            <input type="checkbox" name="friday" value="Friday">Friday<br>
+            <input type="checkbox" name="saturday" value="Saturday">Saturday<br>
+            <input type="checkbox" name="sunday" value="Sunday">Sunday
+        <br>
+        <label for="cal">Custom Calender Date pick</label><br>
+        <input type="text" id="datepicker">
+        <br>
+        <br>
+        <br>
+        <br>
+        <br>
+        <br>
+        <br>
+        <br>
+        <br>
+        <br>
+        <br>
+        <br>
+        
+        <p><input type="submit" value="Submit"></p>
+    </form>
+</body>
+</html>
