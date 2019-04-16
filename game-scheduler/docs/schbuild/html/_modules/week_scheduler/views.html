@@ -1,0 +1,819 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml" lang="Python">
+  <head>
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>week_scheduler.views &#8212; Game scheduler v1.0 21-02-2019 documentation</title>
+    <link rel="stylesheet" href="../../_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="../../" src="../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <script type="text/javascript" src="../../_static/language_data.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+   
+  <link rel="stylesheet" href="../../_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for week_scheduler.views</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">@author: npatel</span>
+<span class="sd">Decription: Database model for calendar events</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">import</span> <span class="nn">datetime</span>
+<span class="kn">import</span> <span class="nn">math</span>
+<span class="kn">import</span> <span class="nn">csv</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">from</span> <span class="nn">traceback</span> <span class="k">import</span> <span class="n">format_exc</span>
+<span class="kn">from</span> <span class="nn">wsgiref.util</span> <span class="k">import</span> <span class="n">FileWrapper</span>
+<span class="kn">from</span> <span class="nn">django.shortcuts</span> <span class="k">import</span> <span class="n">render</span>
+<span class="kn">from</span> <span class="nn">django.http</span> <span class="k">import</span> <span class="n">HttpResponse</span><span class="p">,</span> <span class="n">HttpResponseRedirect</span><span class="p">,</span> <span class="n">JsonResponse</span>
+<span class="kn">from</span> <span class="nn">django.db</span> <span class="k">import</span> <span class="n">connections</span>
+<span class="kn">from</span> <span class="nn">django.db</span> <span class="k">import</span> <span class="n">IntegrityError</span>
+<span class="kn">from</span> <span class="nn">django.core.serializers.json</span> <span class="k">import</span> <span class="n">DjangoJSONEncoder</span>
+<span class="kn">from</span> <span class="nn">django.views.decorators.csrf</span> <span class="k">import</span> <span class="n">csrf_exempt</span>
+<span class="kn">from</span> <span class="nn">django.contrib.auth.decorators</span> <span class="k">import</span> <span class="n">login_required</span>
+<span class="kn">from</span> <span class="nn">django.contrib</span> <span class="k">import</span> <span class="n">messages</span>
+<span class="kn">from</span> <span class="nn">django.conf</span> <span class="k">import</span> <span class="n">settings</span>
+<span class="kn">import</span> <span class="nn">isodate</span>
+<span class="kn">from</span> <span class="nn">week_scheduler</span> <span class="k">import</span> <span class="n">utils</span><span class="p">,</span> <span class="n">validation</span>
+<span class="kn">from</span> <span class="nn">.models</span> <span class="k">import</span> <span class="n">ScheduleModel</span><span class="p">,</span> <span class="n">EventLogsModel</span><span class="p">,</span> <span class="n">UserLogging</span><span class="p">,</span> <span class="n">HistoryModel</span>
+
+
+<span class="n">APPROVAL_ID</span> <span class="o">=</span> <span class="mi">1</span>
+<span class="n">WEEKDAY_MAPPING</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;Monday&#39;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+                   <span class="s1">&#39;Tuesday&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+                   <span class="s1">&#39;Wednesday&#39;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span>
+                   <span class="s1">&#39;Thursday&#39;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span>
+                   <span class="s1">&#39;Friday&#39;</span><span class="p">:</span> <span class="mi">4</span><span class="p">,</span>
+                   <span class="s1">&#39;Saturday&#39;</span><span class="p">:</span> <span class="mi">5</span><span class="p">,</span>
+                   <span class="s1">&#39;Sunday&#39;</span><span class="p">:</span> <span class="mi">6</span><span class="p">,</span>
+                   <span class="p">}</span>
+<span class="n">COLUMNS</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;game_id, stream_id, game_start_time, game_end_time, gap_duration,</span>
+<span class="s2">            status, duration, linked_room, next_event, context, last_updated,</span>
+<span class="s2">            creation_time&quot;&quot;&quot;</span>
+
+<span class="n">CLIPBOARD</span> <span class="o">=</span> <span class="p">[]</span>
+
+
+<div class="viewcode-block" id="week_calendar"><a class="viewcode-back" href="../../modules/views.html#week_scheduler.views.week_calendar">[docs]</a><span class="k">def</span> <span class="nf">week_calendar</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">stream</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Renders the main home page&quot;&quot;&quot;</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">session_key</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">render</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="s1">&#39;fullcalendar.html&#39;</span><span class="p">,</span>
+                  <span class="p">{</span><span class="s1">&#39;stream_list&#39;</span><span class="p">:</span> <span class="n">utils</span><span class="o">.</span><span class="n">get_streams</span><span class="p">(),</span> <span class="s1">&#39;stream&#39;</span><span class="p">:</span> <span class="n">stream</span><span class="p">,</span>
+                   <span class="s1">&#39;approval_list&#39;</span><span class="p">:</span> <span class="n">utils</span><span class="o">.</span><span class="n">get_approval_list</span><span class="p">()})</span></div>
+
+
+<div class="viewcode-block" id="upload_csv"><a class="viewcode-back" href="../../modules/views.html#week_scheduler.views.upload_csv">[docs]</a><span class="nd">@csrf_exempt</span>
+<span class="k">def</span> <span class="nf">upload_csv</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Driver function to Upload scheduling data.&quot;&quot;&quot;</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">FILES</span><span class="o">.</span><span class="n">dict</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">request</span><span class="o">.</span><span class="n">method</span> <span class="o">!=</span> <span class="s2">&quot;POST&quot;</span><span class="p">:</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="n">HttpResponseRedirect</span><span class="p">(</span><span class="s1">&#39;/scheduler/week_calendar/&#39;</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">csv_file</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="s2">&quot;csv_file&quot;</span><span class="p">]</span>
+        <span class="n">lines</span> <span class="o">=</span> <span class="p">[</span><span class="n">line</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">)</span>
+                 <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">csv_file</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s1">&#39;rb&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">readlines</span><span class="p">()]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">csv_file</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s1">&#39;.csv&#39;</span><span class="p">):</span>
+            <span class="n">messages</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="s1">&#39;File is not CSV type&#39;</span><span class="p">)</span>
+            <span class="n">response</span> <span class="o">=</span> <span class="n">HttpResponseRedirect</span><span class="p">(</span><span class="s1">&#39;/scheduler/week_calendar/&#39;</span><span class="p">)</span>
+        <span class="c1"># if file is too large, return</span>
+        <span class="k">if</span> <span class="n">csv_file</span><span class="o">.</span><span class="n">multiple_chunks</span><span class="p">():</span>
+            <span class="n">messages</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="s2">&quot;Uploaded file is too big (</span><span class="si">%.2f</span><span class="s2"> MB).&quot;</span>
+                           <span class="o">%</span> <span class="p">(</span><span class="n">csv_file</span><span class="o">.</span><span class="n">size</span><span class="o">/</span><span class="p">(</span><span class="mi">1000</span><span class="o">*</span><span class="mi">1000</span><span class="p">),))</span>
+            <span class="n">response</span> <span class="o">=</span> <span class="n">HttpResponseRedirect</span><span class="p">(</span><span class="s1">&#39;/scheduler/week_calendar/&#39;</span><span class="p">)</span>
+
+        <span class="sd">&quot;&quot;&quot;Data validation and processing.&quot;&quot;&quot;</span>
+        <span class="n">file_data</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">csv</span><span class="o">.</span><span class="n">DictReader</span><span class="p">(</span><span class="n">lines</span><span class="p">))</span>
+        <span class="n">error_rows</span> <span class="o">=</span> <span class="n">validation</span><span class="o">.</span><span class="n">validate_csv</span><span class="p">(</span><span class="n">file_data</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">error_rows</span><span class="p">:</span>
+            <span class="n">messages</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">request</span><span class="p">,</span>
+                           <span class="s2">&quot;Check Data issues in CSV &quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">error_rows</span><span class="p">))</span>
+            <span class="n">response</span> <span class="o">=</span> <span class="n">HttpResponseRedirect</span><span class="p">(</span><span class="s1">&#39;/scheduler/week_calendar/&#39;</span><span class="p">)</span>
+        <span class="n">event_process</span> <span class="o">=</span> <span class="n">csv_upload_process_events</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">file_data</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">event_process</span><span class="p">:</span>
+            <span class="n">event_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">event</span><span class="p">[</span><span class="s1">&#39;event_id&#39;</span><span class="p">]</span> <span class="k">for</span> <span class="n">event</span> <span class="ow">in</span> <span class="n">event_process</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span>
+            <span class="n">response</span> <span class="o">=</span> <span class="n">render</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="s1">&#39;conflicts_errors.html&#39;</span><span class="p">,</span>
+                              <span class="p">{</span><span class="s1">&#39;conflicts&#39;</span><span class="p">:</span> <span class="n">event_process</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+                               <span class="s1">&#39;current_events&#39;</span><span class="p">:</span> <span class="n">event_process</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>
+                               <span class="s1">&#39;event_list&#39;</span><span class="p">:</span> <span class="n">event_list</span><span class="p">})</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Nishant------------&#39;</span><span class="p">,</span> <span class="n">event_process</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">response</span>
+
+        <span class="n">response</span> <span class="o">=</span> <span class="n">HttpResponseRedirect</span><span class="p">(</span><span class="s1">&#39;/scheduler/week_calendar/&#39;</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">error</span><span class="p">:</span>
+        <span class="n">messages</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">request</span><span class="p">,</span>
+                       <span class="s2">&quot;Unable to upload file. &quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">error</span><span class="p">)</span> <span class="o">+</span> <span class="n">format_exc</span><span class="p">())</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">format_exc</span><span class="p">())</span>
+        <span class="k">return</span> <span class="n">HttpResponseRedirect</span><span class="p">(</span><span class="s1">&#39;/scheduler/week_calendar/&#39;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">response</span></div>
+
+
+<div class="viewcode-block" id="reset_events"><a class="viewcode-back" href="../../modules/views.html#week_scheduler.views.reset_events">[docs]</a><span class="k">def</span> <span class="nf">reset_events</span><span class="p">():</span>
+    <span class="sd">&quot;&quot;&quot;View to Refresh the page.&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">HttpResponseRedirect</span><span class="p">(</span><span class="s1">&#39;/scheduler/week_calendar/&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="csv_upload_process_events"><a class="viewcode-back" href="../../modules/views.html#week_scheduler.views.csv_upload_process_events">[docs]</a><span class="k">def</span> <span class="nf">csv_upload_process_events</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">file_data</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Add the events as per the data in the csv uploaded.&quot;&quot;&quot;</span>
+    <span class="n">user</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">user</span><span class="o">.</span><span class="n">username</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">next_event</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">next_event_id</span><span class="p">()</span>
+        <span class="n">conflicts</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">current_events</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">ctr</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">file_data</span><span class="p">:</span>
+            <span class="n">ctr</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="n">game_id</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s1">&#39;game_id&#39;</span><span class="p">]</span>
+            <span class="n">stream_id</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s1">&#39;stream_id&#39;</span><span class="p">]</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">stream_id</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="n">linked_room</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s1">&#39;linked_room&#39;</span><span class="p">]</span>
+            <span class="n">room</span> <span class="o">=</span> <span class="s1">&#39; - &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">stream_id</span><span class="p">,</span>
+                               <span class="n">utils</span><span class="o">.</span><span class="n">get_stream_details</span><span class="p">(</span><span class="n">stream_id</span><span class="p">)[</span><span class="s1">&#39;stream_name&#39;</span><span class="p">]])</span>
+                
+            <span class="k">if</span> <span class="n">linked_room</span><span class="p">:</span>
+                <span class="n">game</span> <span class="o">=</span> <span class="s1">&#39; - &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="s1">&#39;Linked to&#39;</span><span class="p">,</span> <span class="n">linked_room</span><span class="p">,</span>
+                                   <span class="n">utils</span><span class="o">.</span><span class="n">get_stream_details</span><span class="p">(</span><span class="n">linked_room</span><span class="p">)[</span><span class="s1">&#39;stream_name&#39;</span><span class="p">]])</span>
+                <span class="n">row</span><span class="p">[</span><span class="s1">&#39;linked_room&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39; - &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">linked_room</span><span class="p">,</span>
+                                          <span class="n">utils</span><span class="o">.</span><span class="n">get_stream_details</span><span class="p">(</span><span class="n">linked_room</span><span class="p">)[</span><span class="s1">&#39;stream_name&#39;</span><span class="p">]])</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">linked_room</span> <span class="o">=</span> <span class="s1">&#39;0&#39;</span>
+                <span class="n">game_info</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">get_game_details</span><span class="p">(</span><span class="n">game_id</span><span class="p">)</span>
+                <span class="k">if</span> <span class="s1">&#39;error&#39;</span> <span class="ow">in</span> <span class="n">game_info</span><span class="p">:</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="n">game_info</span><span class="p">)</span>
+                    <span class="k">continue</span>
+                <span class="n">game</span> <span class="o">=</span> <span class="s1">&#39; - &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">game_id</span><span class="p">,</span> <span class="n">game_info</span><span class="p">[</span><span class="s1">&#39;game_name&#39;</span><span class="p">]])</span>
+                <span class="n">row</span><span class="p">[</span><span class="s1">&#39;linked_room&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;None&#39;</span>
+            <span class="n">title</span> <span class="o">=</span> <span class="s1">&#39;|&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">room</span><span class="p">,</span> <span class="n">game</span><span class="p">])</span>
+            <span class="n">row</span><span class="p">[</span><span class="s1">&#39;stream_id&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">room</span>
+            <span class="n">row</span><span class="p">[</span><span class="s1">&#39;game_id&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">game</span>
+            <span class="n">start</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s1">&#39;start_time&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;&quot;&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">)</span>
+            <span class="n">end</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s1">&#39;end_time&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;&quot;&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">)</span>
+            <span class="n">event_id</span> <span class="o">=</span> <span class="s1">&#39;_fc&#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">next_event</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">row</span><span class="p">[</span><span class="s1">&#39;dow&#39;</span><span class="p">]:</span>
+                <span class="n">dow</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s1">&#39;dow&#39;</span><span class="p">])</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">dow</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="n">dow</span><span class="p">))</span>
+                <span class="n">_conflicts</span> <span class="o">=</span> <span class="n">handle_events</span><span class="p">(</span><span class="n">row</span><span class="p">,</span> <span class="n">game_id</span><span class="p">,</span> <span class="n">stream_id</span><span class="p">,</span> <span class="n">dow</span><span class="p">,</span>
+                                           <span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">,</span> <span class="n">user</span><span class="p">,</span> <span class="n">csv</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+                <span class="n">conflicts</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">_conflicts</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">event_logs</span><span class="p">(</span><span class="n">stream_id</span><span class="p">,</span> <span class="n">event_id</span><span class="p">,</span> <span class="n">title</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">,</span> <span class="n">user</span><span class="p">)</span>
+                <span class="n">response</span> <span class="o">=</span> <span class="n">process_schedule_data</span><span class="p">(</span><span class="n">event_id</span><span class="p">,</span> <span class="n">game_id</span><span class="p">,</span>
+                                                 <span class="n">stream_id</span><span class="p">,</span>
+                                                 <span class="n">start</span><span class="p">,</span>
+                                                 <span class="n">end</span><span class="p">,</span>
+                                                 <span class="n">linked_room</span><span class="p">,</span> <span class="n">ctr</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">response</span><span class="p">:</span>
+                    <span class="n">current_events</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="n">event_id</span><span class="p">,</span> <span class="n">game_id</span><span class="p">,</span> <span class="n">stream_id</span><span class="p">,</span>
+                                           <span class="n">utils</span><span class="o">.</span><span class="n">todatetime</span><span class="p">(</span><span class="n">start</span><span class="p">),</span>
+                                           <span class="n">utils</span><span class="o">.</span><span class="n">todatetime</span><span class="p">(</span><span class="n">end</span><span class="p">),</span>
+                                           <span class="n">linked_room</span><span class="p">])</span>
+                    <span class="n">conflicts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">response</span><span class="p">)</span>
+            <span class="n">next_event</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">if</span> <span class="n">conflicts</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Nishant----------&#39;</span><span class="p">,</span> <span class="n">conflicts</span><span class="p">)</span>
+            <span class="k">return</span> <span class="p">(</span><span class="n">conflicts</span><span class="p">,</span> <span class="n">current_events</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">error</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Nishant----------&#39;</span><span class="p">,</span> <span class="n">row</span><span class="p">,</span> <span class="n">format_exc</span><span class="p">())</span>
+        <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="n">error</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_events"><a class="viewcode-back" href="../../modules/views.html#week_scheduler.views.get_events">[docs]</a><span class="nd">@csrf_exempt</span>
+<span class="nd">@login_required</span><span class="p">(</span><span class="n">login_url</span><span class="o">=</span><span class="s1">&#39;/accounts/login/&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">get_events</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;View to add data of the events created on the page.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">request</span><span class="o">.</span><span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;POST&#39;</span><span class="p">:</span>
+        <span class="n">event_data</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">POST</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;the_post&#39;</span><span class="p">))</span>
+        <span class="n">details</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">extract_info</span><span class="p">(</span><span class="n">event_data</span><span class="p">[</span><span class="s1">&#39;title&#39;</span><span class="p">])</span>
+        <span class="n">stream</span> <span class="o">=</span> <span class="n">details</span><span class="p">[</span><span class="s1">&#39;stream&#39;</span><span class="p">]</span>
+        <span class="n">stream_id</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">stream</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;-&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">())</span>
+        <span class="n">user</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">user</span><span class="o">.</span><span class="n">username</span>
+        <span class="sd">&quot;&quot;&quot;Validate Event creation&quot;&quot;&quot;</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">validation</span><span class="o">.</span><span class="n">consecutive_events</span><span class="p">(</span><span class="n">stream_id</span><span class="p">,</span> <span class="n">event_data</span><span class="p">[</span><span class="s1">&#39;start&#39;</span><span class="p">],</span>
+                                               <span class="n">event_data</span><span class="p">[</span><span class="s1">&#39;end&#39;</span><span class="p">])</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;OKKKK&#39;</span><span class="p">,</span> <span class="n">stream_id</span><span class="p">,</span> <span class="n">event_data</span><span class="p">[</span><span class="s1">&#39;start&#39;</span><span class="p">],</span>
+              <span class="n">event_data</span><span class="p">[</span><span class="s1">&#39;end&#39;</span><span class="p">],</span> <span class="n">result</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">result</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">JsonResponse</span><span class="p">({</span><span class="s1">&#39;message&#39;</span><span class="p">:</span> <span class="s1">&#39;Event conflicting with prev/next event play time.&#39;</span><span class="p">},</span>
+                                <span class="n">safe</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="n">next_event</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">next_event_id</span><span class="p">()</span>
+        <span class="n">event_id</span> <span class="o">=</span> <span class="s1">&#39;_fc&#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">next_event</span><span class="p">)</span>
+        <span class="n">event_logs</span><span class="p">(</span><span class="n">stream</span><span class="p">,</span> <span class="n">event_id</span><span class="p">,</span> <span class="n">event_data</span><span class="p">[</span><span class="s1">&#39;title&#39;</span><span class="p">],</span>
+                   <span class="n">event_data</span><span class="p">[</span><span class="s1">&#39;start&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;T&#39;</span><span class="p">,</span> <span class="s1">&#39; &#39;</span><span class="p">),</span>
+                   <span class="n">event_data</span><span class="p">[</span><span class="s1">&#39;end&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;T&#39;</span><span class="p">,</span> <span class="s1">&#39; &#39;</span><span class="p">),</span> <span class="n">user</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">HttpResponse</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">POST</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;the_post&#39;</span><span class="p">)))</span>
+    <span class="k">return</span> <span class="n">HttpResponse</span><span class="p">(</span><span class="s1">&#39;Not a POST Method&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="remove_event"><a class="viewcode-back" href="../../modules/views.html#week_scheduler.views.remove_event">[docs]</a><span class="nd">@csrf_exempt</span>
+<span class="nd">@login_required</span><span class="p">(</span><span class="n">login_url</span><span class="o">=</span><span class="s1">&#39;/accounts/login/&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">remove_event</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;View to remove data of the events created on the page.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">request</span><span class="o">.</span><span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;POST&#39;</span><span class="p">:</span>
+        <span class="n">event_id</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">POST</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;event_id&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">event_id</span><span class="p">)</span>
+        <span class="n">del_row</span> <span class="o">=</span> <span class="n">EventLogsModel</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">event_id</span><span class="o">=</span><span class="n">event_id</span><span class="p">)</span>
+        <span class="n">user_log</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">del_row</span><span class="o">.</span><span class="n">values</span><span class="p">(),</span> <span class="p">[],</span> <span class="s1">&#39;delete&#39;</span><span class="p">)</span>
+        <span class="n">del_row</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
+        <span class="n">ScheduleModel</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">event_id</span><span class="o">=</span><span class="n">event_id</span><span class="p">)</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">HttpResponse</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">POST</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;event_id&#39;</span><span class="p">)))</span>
+    <span class="k">return</span> <span class="n">HttpResponse</span><span class="p">(</span><span class="s1">&#39;Not a POST Method&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="return_events"><a class="viewcode-back" href="../../modules/views.html#week_scheduler.views.return_events">[docs]</a><span class="nd">@csrf_exempt</span>
+<span class="k">def</span> <span class="nf">return_events</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;View to render events previously created.&quot;&quot;&quot;</span>
+    <span class="n">user</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">user</span><span class="o">.</span><span class="n">username</span>
+    <span class="n">is_super</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">user</span><span class="o">.</span><span class="n">is_superuser</span>
+    <span class="n">stream_id</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">POST</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;stream_id&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;-&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">())</span>
+    <span class="n">approval_id</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">POST</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;approval_id&#39;</span><span class="p">)</span>
+    <span class="n">shallow_events</span> <span class="o">=</span> <span class="n">EventLogsModel</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">stream_id</span><span class="o">=</span><span class="n">stream_id</span><span class="p">,</span> <span class="n">title__contains</span><span class="o">=</span><span class="s1">&#39;No Game Configured&#39;</span><span class="p">)</span>
+    <span class="n">shallow_events</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">is_super</span><span class="p">:</span>
+        <span class="n">events</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">EventLogsModel</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">stream_id</span><span class="o">=</span><span class="n">stream_id</span><span class="p">,</span>
+                                                    <span class="n">approval_id</span><span class="o">=</span><span class="n">approval_id</span><span class="p">)</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">pending_events</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">EventLogsModel</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">stream_id</span><span class="o">=</span><span class="n">stream_id</span><span class="p">,</span>
+                                                            <span class="n">approval_id</span><span class="o">=</span><span class="n">approval_id</span><span class="p">,</span>
+                                                            <span class="n">user_id</span><span class="o">=</span><span class="n">user</span><span class="p">,</span>
+                                                            <span class="p">)</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+        <span class="n">main_events</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">EventLogsModel</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">stream_id</span><span class="o">=</span><span class="n">stream_id</span><span class="p">,</span>
+                                                         <span class="n">approval_id</span><span class="o">=</span><span class="n">approval_id</span><span class="p">,</span>
+                                                         <span class="n">status</span><span class="o">=</span><span class="s1">&#39;approved&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+        <span class="n">events</span> <span class="o">=</span> <span class="n">main_events</span> <span class="o">+</span> <span class="n">pending_events</span>
+    <span class="n">events</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">add_color</span><span class="p">(</span><span class="n">events</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">JsonResponse</span><span class="p">(</span><span class="n">events</span><span class="p">,</span> <span class="n">safe</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="click_event"><a class="viewcode-back" href="../../modules/views.html#week_scheduler.views.click_event">[docs]</a><span class="nd">@csrf_exempt</span>
+<span class="nd">@login_required</span><span class="p">(</span><span class="n">login_url</span><span class="o">=</span><span class="s1">&#39;/accounts/login/&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">click_event</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;View to redirect to scheduling_form page to configure the schedule.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">request</span><span class="o">.</span><span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;POST&#39;</span><span class="p">:</span>
+        <span class="n">click_data</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">POST</span><span class="o">.</span><span class="n">dict</span><span class="p">()</span>
+        <span class="n">_id</span> <span class="o">=</span> <span class="n">click_data</span><span class="p">[</span><span class="s1">&#39;_id&#39;</span><span class="p">]</span>
+        <span class="n">title</span> <span class="o">=</span> <span class="n">click_data</span><span class="p">[</span><span class="s1">&#39;title&#39;</span><span class="p">]</span>
+        <span class="n">details</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">extract_info</span><span class="p">(</span><span class="n">title</span><span class="p">)</span>
+        <span class="n">ball_type</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">get_ball_type</span><span class="p">(</span><span class="n">details</span><span class="p">[</span><span class="s1">&#39;stream_id&#39;</span><span class="p">])</span>
+        <span class="n">dow</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">_id</span><span class="p">)</span>
+        <span class="n">existing_game</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">EventLogsModel</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">event_id</span><span class="o">=</span>
+                                                           <span class="n">_id</span><span class="p">)</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+        <span class="k">if</span> <span class="n">existing_game</span><span class="p">:</span>
+            <span class="n">game</span> <span class="o">=</span> <span class="n">existing_game</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">dow</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">game</span><span class="p">[</span><span class="s1">&#39;dow&#39;</span><span class="p">])</span>
+        <span class="n">context</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;game_list&#39;</span><span class="p">:</span> <span class="n">utils</span><span class="o">.</span><span class="n">get_games</span><span class="p">(</span><span class="n">ball_type</span><span class="p">),</span>
+                   <span class="s1">&#39;stream&#39;</span><span class="p">:</span> <span class="n">details</span><span class="p">[</span><span class="s1">&#39;stream&#39;</span><span class="p">],</span>
+                   <span class="s1">&#39;stream_list&#39;</span><span class="p">:</span> <span class="n">utils</span><span class="o">.</span><span class="n">get_streams</span><span class="p">(),</span>
+                   <span class="s1">&#39;minute_range&#39;</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">60</span><span class="p">)),</span>
+                   <span class="s1">&#39;dow&#39;</span><span class="p">:</span> <span class="n">dow</span><span class="p">}</span>
+        <span class="n">event_details</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;event_id&#39;</span><span class="p">:</span> <span class="n">_id</span><span class="p">,</span>
+                         <span class="s1">&#39;start&#39;</span><span class="p">:</span> <span class="n">click_data</span><span class="p">[</span><span class="s1">&#39;start&#39;</span><span class="p">],</span>
+                         <span class="s1">&#39;end&#39;</span><span class="p">:</span> <span class="n">click_data</span><span class="p">[</span><span class="s1">&#39;end&#39;</span><span class="p">],</span>
+                         <span class="p">}</span>
+        <span class="k">if</span> <span class="s1">&#39;No Game Configured&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">title</span><span class="p">:</span>
+            <span class="n">event_details</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="s1">&#39;stream&#39;</span><span class="p">:</span> <span class="n">details</span><span class="p">[</span><span class="s1">&#39;stream&#39;</span><span class="p">],</span>
+                                  <span class="s1">&#39;game&#39;</span><span class="p">:</span> <span class="n">details</span><span class="p">[</span><span class="s1">&#39;game&#39;</span><span class="p">]})</span>
+        <span class="k">if</span> <span class="s1">&#39;Linked to&#39;</span> <span class="ow">in</span> <span class="n">title</span><span class="p">:</span>
+            <span class="n">event_details</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="s1">&#39;stream&#39;</span><span class="p">:</span> <span class="n">details</span><span class="p">[</span><span class="s1">&#39;stream&#39;</span><span class="p">],</span>
+                                  <span class="s1">&#39;linked_room&#39;</span><span class="p">:</span> <span class="n">details</span><span class="p">[</span><span class="s1">&#39;game&#39;</span><span class="p">]})</span>
+        <span class="n">context</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">event_details</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">render</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="s1">&#39;scheduling_form.html&#39;</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">HttpResponseRedirect</span><span class="p">(</span><span class="s1">&#39;/scheduler/week_calendar/&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="drop_event"><a class="viewcode-back" href="../../modules/views.html#week_scheduler.views.drop_event">[docs]</a><span class="nd">@csrf_exempt</span>
+<span class="nd">@login_required</span><span class="p">(</span><span class="n">login_url</span><span class="o">=</span><span class="s1">&#39;/accounts/login/&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">drop_event</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;View to drag &amp; drop event on the page.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">request</span><span class="o">.</span><span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;POST&#39;</span><span class="p">:</span>
+        <span class="n">drop_data</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">POST</span><span class="o">.</span><span class="n">dict</span><span class="p">()</span>
+        <span class="n">delta</span> <span class="o">=</span> <span class="n">isodate</span><span class="o">.</span><span class="n">parse_duration</span><span class="p">(</span><span class="n">drop_data</span><span class="p">[</span><span class="s1">&#39;delta&#39;</span><span class="p">])</span>
+        <span class="n">event_id</span> <span class="o">=</span> <span class="n">drop_data</span><span class="p">[</span><span class="s1">&#39;event_id&#39;</span><span class="p">]</span>
+        <span class="n">new_start</span> <span class="o">=</span> <span class="n">drop_data</span><span class="p">[</span><span class="s1">&#39;new_start&#39;</span><span class="p">]</span>
+        <span class="n">new_end</span> <span class="o">=</span> <span class="n">drop_data</span><span class="p">[</span><span class="s1">&#39;new_end&#39;</span><span class="p">]</span>
+        <span class="n">start</span> <span class="o">=</span> <span class="p">(</span><span class="n">utils</span><span class="o">.</span><span class="n">todatetime</span><span class="p">(</span><span class="n">new_start</span><span class="p">)</span> <span class="o">-</span> <span class="n">delta</span><span class="p">)</span><span class="o">.</span><span class="n">strftime</span><span class="p">(</span><span class="s2">&quot;%Y-%m-</span><span class="si">%d</span><span class="s2"> %H:%M&quot;</span><span class="p">)</span>
+        <span class="n">end</span> <span class="o">=</span> <span class="p">(</span><span class="n">utils</span><span class="o">.</span><span class="n">todatetime</span><span class="p">(</span><span class="n">new_end</span><span class="p">)</span> <span class="o">-</span> <span class="n">delta</span><span class="p">)</span><span class="o">.</span><span class="n">strftime</span><span class="p">(</span><span class="s2">&quot;%Y-%m-</span><span class="si">%d</span><span class="s2"> %H:%M&quot;</span><span class="p">)</span>
+        <span class="n">utils</span><span class="o">.</span><span class="n">update_event_log</span><span class="p">(</span><span class="n">event_id</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">,</span> <span class="p">[],</span> <span class="n">new_start</span><span class="p">,</span>
+                               <span class="n">new_end</span><span class="p">)</span>
+        <span class="n">user_log</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="p">{</span><span class="s1">&#39;event_id&#39;</span><span class="p">:</span> <span class="n">event_id</span><span class="p">,</span> <span class="s1">&#39;start&#39;</span><span class="p">:</span> <span class="n">start</span><span class="p">,</span> <span class="s1">&#39;end&#39;</span><span class="p">:</span> <span class="n">end</span><span class="p">},</span>
+                 <span class="p">{</span><span class="s1">&#39;event_id&#39;</span><span class="p">:</span> <span class="n">event_id</span><span class="p">,</span> <span class="s1">&#39;new_start&#39;</span><span class="p">:</span> <span class="n">new_start</span><span class="p">,</span>
+                  <span class="s1">&#39;new_end&#39;</span><span class="p">:</span> <span class="n">new_end</span><span class="p">},</span> <span class="s1">&#39;dragndrop&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">JsonResponse</span><span class="p">(</span><span class="n">drop_data</span><span class="p">,</span> <span class="n">safe</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">HttpResponse</span><span class="p">(</span><span class="s1">&#39;Not a POST Method&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="resize_event"><a class="viewcode-back" href="../../modules/views.html#week_scheduler.views.resize_event">[docs]</a><span class="nd">@csrf_exempt</span>
+<span class="nd">@login_required</span><span class="p">(</span><span class="n">login_url</span><span class="o">=</span><span class="s1">&#39;/accounts/login/&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">resize_event</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;View to resize an event created on the page.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">request</span><span class="o">.</span><span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;POST&#39;</span><span class="p">:</span>
+        <span class="n">drop_data</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">POST</span><span class="o">.</span><span class="n">dict</span><span class="p">()</span>
+        <span class="n">delta</span> <span class="o">=</span> <span class="n">isodate</span><span class="o">.</span><span class="n">parse_duration</span><span class="p">(</span><span class="n">drop_data</span><span class="p">[</span><span class="s1">&#39;delta&#39;</span><span class="p">])</span>
+        <span class="n">event_id</span> <span class="o">=</span> <span class="n">drop_data</span><span class="p">[</span><span class="s1">&#39;event_id&#39;</span><span class="p">]</span>
+        <span class="n">new_start</span> <span class="o">=</span> <span class="n">drop_data</span><span class="p">[</span><span class="s1">&#39;new_start&#39;</span><span class="p">]</span>
+        <span class="n">new_end</span> <span class="o">=</span> <span class="n">drop_data</span><span class="p">[</span><span class="s1">&#39;new_end&#39;</span><span class="p">]</span>
+        <span class="n">end</span> <span class="o">=</span> <span class="p">(</span><span class="n">utils</span><span class="o">.</span><span class="n">todatetime</span><span class="p">(</span><span class="n">new_end</span><span class="p">)</span> <span class="o">-</span> <span class="n">delta</span><span class="p">)</span><span class="o">.</span><span class="n">strftime</span><span class="p">(</span><span class="s2">&quot;%Y-%m-</span><span class="si">%d</span><span class="s2"> %H:%M&quot;</span><span class="p">)</span>
+        <span class="n">utils</span><span class="o">.</span><span class="n">update_event_log</span><span class="p">(</span><span class="n">event_id</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="n">new_start</span><span class="p">,</span> <span class="n">end</span><span class="p">,</span> <span class="p">[],</span>
+                               <span class="n">new_start</span><span class="p">,</span> <span class="n">new_end</span><span class="p">)</span>
+        <span class="n">user_log</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="p">{</span><span class="s1">&#39;event_id&#39;</span><span class="p">:</span> <span class="n">event_id</span><span class="p">,</span> <span class="s1">&#39;start&#39;</span><span class="p">:</span> <span class="n">new_start</span><span class="p">,</span>
+                           <span class="s1">&#39;end&#39;</span><span class="p">:</span> <span class="n">end</span><span class="p">},</span>
+                 <span class="p">{</span><span class="s1">&#39;event_id&#39;</span><span class="p">:</span> <span class="n">event_id</span><span class="p">,</span> <span class="s1">&#39;new_start&#39;</span><span class="p">:</span> <span class="n">new_start</span><span class="p">,</span>
+                  <span class="s1">&#39;new_end&#39;</span><span class="p">:</span> <span class="n">new_end</span><span class="p">},</span> <span class="s1">&#39;resize&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">JsonResponse</span><span class="p">(</span><span class="n">drop_data</span><span class="p">,</span> <span class="n">safe</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">HttpResponse</span><span class="p">(</span><span class="s1">&#39;Not a POST Method&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="copy_event"><a class="viewcode-back" href="../../modules/views.html#week_scheduler.views.copy_event">[docs]</a><span class="nd">@csrf_exempt</span>
+<span class="k">def</span> <span class="nf">copy_event</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;View to clipboard an events created on the page.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">request</span><span class="o">.</span><span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;POST&#39;</span><span class="p">:</span>
+        <span class="n">copy_data</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">POST</span><span class="o">.</span><span class="n">dict</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">JsonResponse</span><span class="p">(</span><span class="n">copy_data</span><span class="p">,</span> <span class="n">safe</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">HttpResponse</span><span class="p">(</span><span class="s1">&#39;Not a POST Method&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="paste_event"><a class="viewcode-back" href="../../modules/views.html#week_scheduler.views.paste_event">[docs]</a><span class="nd">@csrf_exempt</span>
+<span class="k">def</span> <span class="nf">paste_event</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;View to paste previously copied data created on the page.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">request</span><span class="o">.</span><span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;POST&#39;</span><span class="p">:</span>
+        <span class="n">paste_data</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">POST</span><span class="o">.</span><span class="n">dict</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">JsonResponse</span><span class="p">(</span><span class="n">paste_data</span><span class="p">,</span> <span class="n">safe</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">HttpResponse</span><span class="p">(</span><span class="s1">&#39;Not a POST Method&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="single_event_object"><a class="viewcode-back" href="../../modules/views.html#week_scheduler.views.single_event_object">[docs]</a><span class="nd">@csrf_exempt</span>
+<span class="k">def</span> <span class="nf">single_event_object</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;View to render popup data for game details on the page.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">request</span><span class="o">.</span><span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;POST&#39;</span><span class="p">:</span>
+        <span class="n">event_data</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">POST</span><span class="o">.</span><span class="n">dict</span><span class="p">()</span>
+        <span class="n">stream_id</span> <span class="o">=</span> <span class="n">event_data</span><span class="p">[</span><span class="s1">&#39;stream_id&#39;</span><span class="p">]</span>
+        <span class="n">event_id</span> <span class="o">=</span> <span class="n">event_data</span><span class="p">[</span><span class="s1">&#39;event_id&#39;</span><span class="p">]</span>
+        <span class="n">event</span> <span class="o">=</span> <span class="n">EventLogsModel</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">stream_id</span><span class="o">=</span><span class="n">stream_id</span><span class="p">,</span>
+                                              <span class="n">event_id</span><span class="o">=</span><span class="n">event_id</span><span class="p">)</span><span class="o">.</span><span class="n">values</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">JsonResponse</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">event</span><span class="p">),</span> <span class="n">safe</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">HttpResponse</span><span class="p">(</span><span class="s1">&#39;Not a POST Method&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="scheduling_form"><a class="viewcode-back" href="../../modules/views.html#week_scheduler.views.scheduling_form">[docs]</a><span class="k">def</span> <span class="nf">scheduling_form</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;View to render and pass scheduling form data from home page.&quot;&quot;&quot;</span>
+    <span class="n">context</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;game_list&#39;</span><span class="p">:</span> <span class="n">utils</span><span class="o">.</span><span class="n">get_games</span><span class="p">(),</span>
+               <span class="s1">&#39;stream_list&#39;</span><span class="p">:</span> <span class="n">utils</span><span class="o">.</span><span class="n">get_streams</span><span class="p">(),</span>
+               <span class="s1">&#39;minute_range&#39;</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">60</span><span class="p">))}</span>
+    <span class="k">return</span> <span class="n">render</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="s1">&#39;scheduling_form.html&#39;</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="schedule_game"><a class="viewcode-back" href="../../modules/views.html#week_scheduler.views.schedule_game">[docs]</a><span class="k">def</span> <span class="nf">schedule_game</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Driver to retrieve and process the game scheduled.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">request</span><span class="o">.</span><span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;GET&#39;</span><span class="p">:</span>
+        <span class="n">game_data</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">GET</span><span class="o">.</span><span class="n">dict</span><span class="p">()</span>
+        <span class="n">stream_id</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">game_data</span><span class="p">[</span><span class="s1">&#39;stream_id&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;-&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">())</span>
+        <span class="n">game_id</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">game_data</span><span class="p">[</span><span class="s1">&#39;game_id&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;-&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">())</span>
+        <span class="n">user</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">user</span><span class="o">.</span><span class="n">username</span>
+        <span class="k">if</span> <span class="n">stream_id</span> <span class="ow">and</span> <span class="n">game_id</span><span class="p">:</span>
+            <span class="n">event_start_time</span> <span class="o">=</span> <span class="n">game_data</span><span class="p">[</span><span class="s1">&#39;start_datetimepicker&#39;</span><span class="p">]</span>
+            <span class="n">event_end_time</span> <span class="o">=</span> <span class="n">game_data</span><span class="p">[</span><span class="s1">&#39;end_datetimepicker&#39;</span><span class="p">]</span>
+            <span class="n">days_of_week</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">GET</span><span class="o">.</span><span class="n">getlist</span><span class="p">(</span><span class="s1">&#39;dow&#39;</span><span class="p">)</span>
+            <span class="n">game_data</span><span class="p">[</span><span class="s1">&#39;limit&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">game_data</span><span class="p">[</span><span class="s1">&#39;limit_datetimepicker&#39;</span><span class="p">]</span>
+            <span class="n">conflicts</span> <span class="o">=</span> <span class="n">handle_events</span><span class="p">(</span><span class="n">game_data</span><span class="p">,</span> <span class="n">game_id</span><span class="p">,</span> <span class="n">stream_id</span><span class="p">,</span> <span class="n">days_of_week</span><span class="p">,</span>
+                                      <span class="n">event_start_time</span><span class="p">,</span> <span class="n">event_end_time</span><span class="p">,</span> <span class="n">user</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">HttpResponseRedirect</span><span class="p">(</span><span class="s1">&#39;/scheduler/week_calendar/&#39;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">HttpResponseRedirect</span><span class="p">(</span><span class="s1">&#39;/scheduler/week_calendar/&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="handle_events"><a class="viewcode-back" href="../../modules/views.html#week_scheduler.views.handle_events">[docs]</a><span class="k">def</span> <span class="nf">handle_events</span><span class="p">(</span><span class="n">game_data</span><span class="p">,</span> <span class="n">game_id</span><span class="p">,</span> <span class="n">stream_id</span><span class="p">,</span> <span class="n">days_of_week</span><span class="p">,</span>
+                  <span class="n">event_start_time</span><span class="p">,</span> <span class="n">event_end_time</span><span class="p">,</span> <span class="n">user</span><span class="p">,</span> <span class="n">csv</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="n">event_start_time</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">todatetime</span><span class="p">(</span><span class="n">event_start_time</span><span class="p">)</span>
+    <span class="n">event_end_time</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">todatetime</span><span class="p">(</span><span class="n">event_end_time</span><span class="p">)</span>
+    <span class="n">limit</span> <span class="o">=</span> <span class="n">game_data</span><span class="p">[</span><span class="s1">&#39;limit&#39;</span><span class="p">]</span>
+    <span class="n">linked_room</span> <span class="o">=</span> <span class="n">game_data</span><span class="p">[</span><span class="s1">&#39;linked_room&#39;</span><span class="p">]</span>
+    <span class="n">conflicts</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="n">linked_room</span> <span class="o">==</span> <span class="s1">&#39;None&#39;</span><span class="p">:</span>
+        <span class="n">linked_room</span> <span class="o">=</span> <span class="s1">&#39;0&#39;</span>
+        <span class="n">linked_room_id</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">linked_room_id</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">linked_room</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39; - &#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">])</span>
+
+    <span class="k">if</span> <span class="n">limit</span><span class="p">:</span>
+        <span class="n">limit</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">todatetime</span><span class="p">(</span><span class="n">limit</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;&quot;&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">days_of_week</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">limit</span><span class="p">:</span>
+        <span class="n">limit</span> <span class="o">=</span> <span class="n">event_start_time</span> <span class="o">+</span> <span class="n">datetime</span><span class="o">.</span><span class="n">timedelta</span><span class="p">(</span><span class="n">days</span><span class="o">=</span><span class="mi">7</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">days_of_week</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">limit</span><span class="p">:</span>
+        <span class="n">limit</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="p">(</span><span class="mi">1970</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+
+    <span class="n">game_times</span> <span class="o">=</span> <span class="n">game_time_generator</span><span class="p">(</span><span class="n">event_start_time</span><span class="p">,</span>
+                                     <span class="n">event_end_time</span><span class="p">,</span>
+                                     <span class="n">days_of_week</span><span class="p">,</span> <span class="n">limit</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">game_times</span><span class="p">)</span>
+    <span class="n">next_event</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">next_event_id</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">game_start</span><span class="p">,</span> <span class="n">game_end</span> <span class="ow">in</span> <span class="n">game_times</span><span class="p">:</span>
+        <span class="n">event_id</span> <span class="o">=</span> <span class="s1">&#39;_fc&#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">next_event</span><span class="p">)</span>
+        <span class="n">event_logs</span><span class="p">(</span><span class="n">game_data</span><span class="p">[</span><span class="s1">&#39;stream_id&#39;</span><span class="p">],</span> <span class="n">event_id</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
+                   <span class="n">game_start</span><span class="o">.</span><span class="n">strftime</span><span class="p">(</span><span class="s2">&quot;%Y-%m-</span><span class="si">%d</span><span class="s2"> %H:%M&quot;</span><span class="p">),</span>
+                   <span class="n">game_end</span><span class="o">.</span><span class="n">strftime</span><span class="p">(</span><span class="s2">&quot;%Y-%m-</span><span class="si">%d</span><span class="s2"> %H:%M&quot;</span><span class="p">),</span>
+                   <span class="n">user</span><span class="p">)</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="n">process_schedule_data</span><span class="p">(</span><span class="n">event_id</span><span class="p">,</span> <span class="n">game_id</span><span class="p">,</span> <span class="n">stream_id</span><span class="p">,</span> <span class="n">game_start</span><span class="p">,</span>
+                                         <span class="n">game_end</span><span class="p">,</span> <span class="n">linked_room_id</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">response</span><span class="p">:</span>
+            <span class="n">conflicts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">response</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">csv</span> <span class="ow">and</span> <span class="p">(</span><span class="n">game_data</span><span class="p">[</span><span class="s1">&#39;start&#39;</span><span class="p">]</span> <span class="o">!=</span> <span class="n">game_data</span><span class="p">[</span><span class="s1">&#39;start_datetimepicker&#39;</span><span class="p">]</span>
+                        <span class="ow">or</span> <span class="n">game_data</span><span class="p">[</span><span class="s1">&#39;end&#39;</span><span class="p">]</span> <span class="o">!=</span> <span class="n">game_data</span><span class="p">[</span><span class="s1">&#39;end_datetimepicker&#39;</span><span class="p">]):</span>
+            <span class="n">utils</span><span class="o">.</span><span class="n">update_event_log</span><span class="p">(</span><span class="n">event_id</span><span class="p">,</span> <span class="n">game_data</span><span class="p">[</span><span class="s1">&#39;stream_id&#39;</span><span class="p">],</span>
+                                   <span class="n">game_data</span><span class="p">[</span><span class="s1">&#39;game_id&#39;</span><span class="p">],</span>
+                                   <span class="n">linked_room</span><span class="p">,</span>
+                                   <span class="n">game_data</span><span class="p">[</span><span class="s1">&#39;start&#39;</span><span class="p">],</span>
+                                   <span class="n">game_data</span><span class="p">[</span><span class="s1">&#39;end&#39;</span><span class="p">],</span>
+                                   <span class="n">days_of_week</span><span class="p">,</span>
+                                   <span class="n">game_data</span><span class="p">[</span><span class="s1">&#39;start_datetimepicker&#39;</span><span class="p">],</span>
+                                   <span class="n">game_data</span><span class="p">[</span><span class="s1">&#39;end_datetimepicker&#39;</span><span class="p">])</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">utils</span><span class="o">.</span><span class="n">update_event_log</span><span class="p">(</span><span class="n">event_id</span><span class="p">,</span> <span class="n">game_data</span><span class="p">[</span><span class="s1">&#39;stream_id&#39;</span><span class="p">],</span>
+                                   <span class="n">game_data</span><span class="p">[</span><span class="s1">&#39;game_id&#39;</span><span class="p">],</span>
+                                   <span class="n">linked_room</span><span class="p">,</span>
+                                   <span class="n">game_start</span><span class="o">.</span><span class="n">strftime</span><span class="p">(</span><span class="s2">&quot;%Y-%m-</span><span class="si">%d</span><span class="s2"> %H:%M&quot;</span><span class="p">),</span>
+                                   <span class="n">game_end</span><span class="o">.</span><span class="n">strftime</span><span class="p">(</span><span class="s2">&quot;%Y-%m-</span><span class="si">%d</span><span class="s2"> %H:%M&quot;</span><span class="p">),</span>
+                                   <span class="n">days_of_week</span><span class="p">)</span>
+        <span class="n">next_event</span> <span class="o">+=</span> <span class="mi">1</span>
+    <span class="k">return</span> <span class="n">conflicts</span></div>
+
+
+<div class="viewcode-block" id="process_schedule_data"><a class="viewcode-back" href="../../modules/views.html#week_scheduler.views.process_schedule_data">[docs]</a><span class="k">def</span> <span class="nf">process_schedule_data</span><span class="p">(</span><span class="n">event_id</span><span class="p">,</span> <span class="n">game_id</span><span class="p">,</span> <span class="n">stream_id</span><span class="p">,</span> <span class="n">game_start</span><span class="p">,</span> <span class="n">game_end</span><span class="p">,</span>
+                          <span class="n">linked_room_id</span><span class="p">,</span> <span class="n">ctr</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">override</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Insert the data for the configured schedule in bingo_schedule_new&quot;&quot;&quot;</span>
+    <span class="n">current_time</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">today</span><span class="p">()</span>
+    <span class="sd">&quot;&quot;&quot;Check for clashing event&quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">override</span><span class="p">:</span>
+            <span class="n">conflict</span> <span class="o">=</span> <span class="n">conflict_event</span><span class="p">(</span><span class="n">game_start</span><span class="p">,</span> <span class="n">stream_id</span><span class="p">,</span> <span class="n">ctr</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">conflict</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">conflict</span>
+        <span class="sd">&quot;&quot;&quot;ORM Insert&quot;&quot;&quot;</span>
+        <span class="n">post</span> <span class="o">=</span> <span class="n">ScheduleModel</span><span class="p">()</span>
+        <span class="n">post</span><span class="o">.</span><span class="n">event_id</span> <span class="o">=</span> <span class="n">event_id</span>
+        <span class="n">post</span><span class="o">.</span><span class="n">game_id</span> <span class="o">=</span> <span class="n">game_id</span> <span class="k">if</span> <span class="nb">int</span><span class="p">(</span><span class="n">linked_room_id</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span> <span class="k">else</span> <span class="o">-</span><span class="mi">1</span>
+        <span class="n">post</span><span class="o">.</span><span class="n">stream_id</span> <span class="o">=</span> <span class="n">stream_id</span>
+        <span class="n">post</span><span class="o">.</span><span class="n">game_start_time</span> <span class="o">=</span> <span class="n">game_start</span>
+        <span class="n">post</span><span class="o">.</span><span class="n">game_end_time</span> <span class="o">=</span> <span class="n">game_end</span>
+        <span class="n">post</span><span class="o">.</span><span class="n">duration</span> <span class="o">=</span> <span class="nb">int</span><span class="p">((</span><span class="n">game_end</span> <span class="o">-</span> <span class="n">game_start</span><span class="p">)</span><span class="o">.</span><span class="n">seconds</span><span class="o">/</span><span class="mi">60</span><span class="p">)</span>
+        <span class="n">post</span><span class="o">.</span><span class="n">linked_room</span> <span class="o">=</span> <span class="n">linked_room_id</span>
+        <span class="n">post</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="s1">&#39;pending&#39;</span>
+        <span class="n">post</span><span class="o">.</span><span class="n">creation_time</span> <span class="o">=</span> <span class="n">current_time</span>
+        <span class="n">post</span><span class="o">.</span><span class="n">last_updated</span> <span class="o">=</span> <span class="n">current_time</span>
+        <span class="n">post</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">format_exc</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="show_data"><a class="viewcode-back" href="../../modules/views.html#week_scheduler.views.show_data">[docs]</a><span class="k">def</span> <span class="nf">show_data</span><span class="p">():</span>
+    <span class="sd">&quot;&quot;&quot;Test function to show config data&quot;&quot;&quot;</span>
+    <span class="n">cur</span> <span class="o">=</span> <span class="n">connections</span><span class="p">[</span><span class="s1">&#39;default&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span>
+    <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;SELECT *</span>
+<span class="s2">                  FROM gms.bingo_schedule_new</span>
+<span class="s2">                  ORDER BY game_start_time</span>
+<span class="s2">                  &quot;&quot;&quot;</span><span class="p">)</span>
+    <span class="n">columns</span> <span class="o">=</span> <span class="p">[</span><span class="n">column</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">column</span> <span class="ow">in</span> <span class="n">cur</span><span class="o">.</span><span class="n">description</span><span class="p">]</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchall</span><span class="p">():</span>
+        <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">dict</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">columns</span><span class="p">,</span> <span class="n">row</span><span class="p">)))</span></div>
+
+
+<div class="viewcode-block" id="game_time_generator"><a class="viewcode-back" href="../../modules/views.html#week_scheduler.views.game_time_generator">[docs]</a><span class="k">def</span> <span class="nf">game_time_generator</span><span class="p">(</span><span class="n">start_time</span><span class="p">,</span> <span class="n">end_time</span><span class="p">,</span> <span class="n">days_of_week</span><span class="p">,</span> <span class="n">limit</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Returns generator object with game times between start and end time&quot;&quot;&quot;</span>
+    <span class="n">game_times</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">start_weekday</span> <span class="o">=</span> <span class="n">start_time</span><span class="o">.</span><span class="n">weekday</span><span class="p">()</span> <span class="o">+</span> <span class="mi">1</span>
+    <span class="n">limit_weeks</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">if</span> <span class="n">start_time</span> <span class="o">&lt;</span> <span class="n">limit</span><span class="p">:</span>
+        <span class="n">limit_weeks</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">ceil</span><span class="p">(((</span><span class="n">limit</span> <span class="o">-</span> <span class="n">start_time</span><span class="p">)</span><span class="o">.</span><span class="n">days</span><span class="o">/</span><span class="mf">7.0</span><span class="p">))</span>
+
+    <span class="sd">&quot;&quot;&quot;Current week game time.&quot;&quot;&quot;</span>
+    <span class="n">game_times</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="n">start_time</span><span class="p">,</span> <span class="n">end_time</span><span class="p">])</span>
+
+    <span class="sd">&quot;&quot;&quot;Future weeks game time.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">days_of_week</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">week</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">limit_weeks</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">day</span> <span class="ow">in</span> <span class="n">days_of_week</span><span class="p">:</span>
+                <span class="n">day</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">day</span><span class="p">)</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">day</span><span class="p">,</span> <span class="n">week</span><span class="p">,</span> <span class="n">days_of_week</span><span class="p">)</span>
+                <span class="n">day_count</span> <span class="o">=</span> <span class="p">(</span><span class="n">day</span><span class="o">-</span><span class="n">start_weekday</span><span class="p">)</span> <span class="o">+</span> <span class="mi">7</span><span class="o">*</span><span class="n">week</span>
+                <span class="n">weekly_start_time</span> <span class="o">=</span> <span class="n">start_time</span> <span class="o">+</span>\
+                    <span class="n">datetime</span><span class="o">.</span><span class="n">timedelta</span><span class="p">(</span><span class="n">days</span><span class="o">=</span><span class="n">day_count</span><span class="p">)</span>
+                <span class="n">weekly_end_time</span> <span class="o">=</span> <span class="n">end_time</span> <span class="o">+</span>\
+                    <span class="n">datetime</span><span class="o">.</span><span class="n">timedelta</span><span class="p">(</span><span class="n">days</span><span class="o">=</span><span class="n">day_count</span><span class="p">)</span>
+                <span class="n">game_times</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="n">weekly_start_time</span><span class="p">,</span> <span class="n">weekly_end_time</span><span class="p">])</span>
+    <span class="k">return</span> <span class="n">game_times</span></div>
+
+
+<div class="viewcode-block" id="conflict_event"><a class="viewcode-back" href="../../modules/views.html#week_scheduler.views.conflict_event">[docs]</a><span class="k">def</span> <span class="nf">conflict_event</span><span class="p">(</span><span class="n">game_start_time</span><span class="p">,</span> <span class="n">stream_id</span><span class="p">,</span> <span class="n">ctr</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Validates the overlapping events&quot;&quot;&quot;</span>
+    <span class="n">ex_cols</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;context&#39;</span><span class="p">,</span> <span class="s1">&#39;creation_time&#39;</span><span class="p">,</span> <span class="s1">&#39;duration&#39;</span><span class="p">]</span>
+    <span class="n">conn</span> <span class="o">=</span> <span class="n">connections</span><span class="p">[</span><span class="s1">&#39;default&#39;</span><span class="p">]</span>
+    <span class="n">cur</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span>
+    <span class="n">error</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="c1">#    print(&quot;&quot;&quot;SELECT *</span>
+<span class="c1">#                  FROM gms.bingo_schedule_new</span>
+<span class="c1">#                  WHERE game_start_time &lt;= &#39;%s&#39; and &#39;%s&#39; &lt; game_end_time</span>
+<span class="c1">#                  AND stream_id = %s</span>
+<span class="c1">#                  ORDER BY game_start_time&quot;&quot;&quot; %</span>
+<span class="c1">#              (game_start_time, game_start_time, stream_id))</span>
+    <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;SELECT *</span>
+<span class="s2">                  FROM gms.bingo_schedule_new</span>
+<span class="s2">                  WHERE game_start_time &lt;= &#39;</span><span class="si">%s</span><span class="s2">&#39; and &#39;</span><span class="si">%s</span><span class="s2">&#39; &lt; game_end_time</span>
+<span class="s2">                  AND stream_id = </span><span class="si">%s</span><span class="s2"></span>
+<span class="s2">                  ORDER BY game_start_time&quot;&quot;&quot;</span> <span class="o">%</span>
+                <span class="p">(</span><span class="n">game_start_time</span><span class="p">,</span> <span class="n">game_start_time</span><span class="p">,</span> <span class="n">stream_id</span><span class="p">))</span>
+    <span class="n">conflict_row</span> <span class="o">=</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+    <span class="c1"># print(conflict_row)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">conflict_row</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="n">conflict_row</span> <span class="o">=</span> <span class="nb">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="n">conflict_row</span><span class="p">)</span>
+    <span class="n">columns</span> <span class="o">=</span> <span class="p">[</span><span class="n">column</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">column</span> <span class="ow">in</span> <span class="n">cur</span><span class="o">.</span><span class="n">description</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">conflict_row</span><span class="p">:</span>
+        <span class="n">error</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">columns</span><span class="p">,</span> <span class="n">conflict_row</span><span class="p">))</span>
+        <span class="n">error</span> <span class="o">=</span> <span class="p">{</span><span class="n">key</span><span class="p">:</span> <span class="n">val</span> <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">val</span> <span class="ow">in</span> <span class="n">error</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">ex_cols</span><span class="p">}</span>
+        <span class="n">error</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="s1">&#39;conflicting_row&#39;</span><span class="p">:</span> <span class="n">ctr</span><span class="p">})</span>
+    <span class="k">return</span> <span class="n">error</span></div>
+
+
+<div class="viewcode-block" id="event_logs"><a class="viewcode-back" href="../../modules/views.html#week_scheduler.views.event_logs">[docs]</a><span class="k">def</span> <span class="nf">event_logs</span><span class="p">(</span><span class="n">stream</span><span class="p">,</span> <span class="n">event_id</span><span class="p">,</span> <span class="n">title</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">,</span> <span class="n">user</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;ORM Insert&quot;&quot;&quot;</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">stream</span><span class="p">,</span> <span class="n">event_id</span><span class="p">,</span> <span class="n">title</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">,</span> <span class="n">user</span><span class="p">)</span>
+    <span class="n">stream_id</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">stream</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;-&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">())</span>
+    <span class="n">start_times</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">EventLogsModel</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">values_list</span><span class="p">(</span><span class="s1">&#39;start&#39;</span><span class="p">,</span>
+                                                          <span class="n">flat</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
+    <span class="n">end_times</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">EventLogsModel</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">values_list</span><span class="p">(</span><span class="s1">&#39;end&#39;</span><span class="p">,</span> <span class="n">flat</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
+    <span class="n">stream_ids</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">EventLogsModel</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">values_list</span><span class="p">(</span><span class="s1">&#39;stream_id&#39;</span><span class="p">,</span>
+                                                         <span class="n">flat</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
+    <span class="k">for</span> <span class="n">startt</span><span class="p">,</span> <span class="n">endt</span><span class="p">,</span> <span class="n">_stream</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">start_times</span><span class="p">,</span> <span class="n">end_times</span><span class="p">,</span> <span class="n">stream_ids</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">startt</span> <span class="o">==</span> <span class="n">start</span> <span class="ow">and</span> <span class="n">endt</span> <span class="o">==</span> <span class="n">end</span> <span class="ow">and</span> <span class="n">_stream</span> <span class="o">==</span> <span class="n">stream_id</span><span class="p">:</span>
+            <span class="n">rows</span> <span class="o">=</span> <span class="n">EventLogsModel</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">start</span><span class="o">=</span><span class="n">startt</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="n">endt</span><span class="p">,</span>
+                                                 <span class="n">stream_id</span><span class="o">=</span><span class="n">_stream</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Del-------&#39;</span><span class="p">,</span> <span class="n">rows</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+            <span class="n">rows</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">event_log</span> <span class="o">=</span> <span class="n">EventLogsModel</span><span class="p">()</span>
+        <span class="n">event_log</span><span class="o">.</span><span class="n">stream_id</span> <span class="o">=</span> <span class="n">stream_id</span>
+        <span class="n">event_log</span><span class="o">.</span><span class="n">event_id</span> <span class="o">=</span> <span class="n">event_id</span>
+        <span class="n">event_log</span><span class="o">.</span><span class="n">title</span> <span class="o">=</span> <span class="n">title</span>
+        <span class="n">event_log</span><span class="o">.</span><span class="n">start</span> <span class="o">=</span> <span class="n">start</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;T&#39;</span><span class="p">,</span> <span class="s1">&#39; &#39;</span><span class="p">)</span>
+        <span class="n">event_log</span><span class="o">.</span><span class="n">end</span> <span class="o">=</span> <span class="n">end</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;T&#39;</span><span class="p">,</span> <span class="s1">&#39; &#39;</span><span class="p">)</span>
+        <span class="n">event_log</span><span class="o">.</span><span class="n">dow</span> <span class="o">=</span> <span class="s1">&#39;[]&#39;</span>
+        <span class="n">event_log</span><span class="o">.</span><span class="n">user_id</span> <span class="o">=</span> <span class="n">user</span>
+        <span class="n">event_log</span><span class="o">.</span><span class="n">approval_id</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">event_log</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="s1">&#39;open&#39;</span>
+        <span class="n">event_log</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+    <span class="k">except</span> <span class="n">IntegrityError</span><span class="p">:</span>
+        <span class="k">return</span></div>
+
+
+<div class="viewcode-block" id="get_prebuy_stats"><a class="viewcode-back" href="../../modules/views.html#week_scheduler.views.get_prebuy_stats">[docs]</a><span class="nd">@csrf_exempt</span>
+<span class="k">def</span> <span class="nf">get_prebuy_stats</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;View to render prebuy stats in popover the event.&quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">params</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">POST</span><span class="o">.</span><span class="n">dict</span><span class="p">()</span>
+        <span class="n">title</span><span class="p">,</span> <span class="n">end</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="s1">&#39;title&#39;</span><span class="p">],</span> <span class="n">params</span><span class="p">[</span><span class="s1">&#39;end&#39;</span><span class="p">]</span>
+        <span class="n">stream_id</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">extract_info</span><span class="p">(</span><span class="n">title</span><span class="p">)[</span><span class="s1">&#39;stream_id&#39;</span><span class="p">]</span>
+        <span class="n">end</span> <span class="o">=</span> <span class="p">(</span><span class="n">utils</span><span class="o">.</span><span class="n">todatetime</span><span class="p">(</span><span class="n">end</span><span class="p">)</span> <span class="o">-</span>
+               <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="p">(</span><span class="mi">1970</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="n">total_seconds</span><span class="p">()</span>
+        <span class="n">prebuy_stats</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">conn</span> <span class="o">=</span> <span class="n">connections</span><span class="p">[</span><span class="s1">&#39;default&#39;</span><span class="p">]</span>
+        <span class="n">cur</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span>
+        <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;SELECT status,</span>
+<span class="s2">                            count(distinct account_id) players,</span>
+<span class="s2">                            sum(no_of_cards * card_cost) as total_wagering</span>
+<span class="s2">                     FROM gms.prebuy_new</span>
+<span class="s2">                     WHERE room_id = </span><span class="si">%s</span><span class="s2"></span>
+<span class="s2">                       AND game_start_time = </span><span class="si">%s</span><span class="s2"> group by status</span>
+<span class="s2">                  &quot;&quot;&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">stream_id</span><span class="p">,</span> <span class="n">end</span><span class="p">))</span>
+        <span class="n">rows</span> <span class="o">=</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">:</span>
+            <span class="n">prebuy_stats</span><span class="p">[</span><span class="n">row</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;players&#39;</span><span class="p">:</span> <span class="n">row</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>
+                                    <span class="s1">&#39;total_wagering&#39;</span><span class="p">:</span> <span class="n">row</span><span class="p">[</span><span class="mi">2</span><span class="p">]}</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">prebuy_stats</span><span class="p">:</span>
+            <span class="n">prebuy_stats</span> <span class="o">=</span> <span class="s1">&#39;No prebuy records.&#39;</span>
+        <span class="k">return</span> <span class="n">JsonResponse</span><span class="p">(</span><span class="n">prebuy_stats</span><span class="p">,</span> <span class="n">safe</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">JsonResponse</span><span class="p">({},</span> <span class="n">safe</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="bulk_delete"><a class="viewcode-back" href="../../modules/views.html#week_scheduler.views.bulk_delete">[docs]</a><span class="nd">@csrf_exempt</span>
+<span class="nd">@login_required</span><span class="p">(</span><span class="n">login_url</span><span class="o">=</span><span class="s1">&#39;/accounts/login/&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">bulk_delete</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;View to delete multiple event based on the datetime range.&quot;&quot;&quot;</span>
+    <span class="n">del_data</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">POST</span><span class="o">.</span><span class="n">dict</span><span class="p">()</span>
+    <span class="n">stream_id</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">del_data</span><span class="p">[</span><span class="s1">&#39;stream&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39; - &#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="n">del_rows</span> <span class="o">=</span> <span class="n">EventLogsModel</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">start__range</span><span class="o">=</span><span class="p">(</span><span class="n">del_data</span><span class="p">[</span><span class="s1">&#39;from_date&#39;</span><span class="p">],</span>
+                                                           <span class="n">del_data</span><span class="p">[</span><span class="s1">&#39;to_date&#39;</span><span class="p">]),</span>
+                                             <span class="n">stream_id</span><span class="o">=</span><span class="n">stream_id</span><span class="p">)</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
+    <span class="n">user_log</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">del_rows</span><span class="o">.</span><span class="n">values</span><span class="p">(),</span> <span class="p">[],</span> <span class="s1">&#39;bulk_delete&#39;</span><span class="p">)</span>
+    <span class="n">del_rows</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
+    <span class="n">ScheduleModel</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">game_start_time__range</span><span class="o">=</span><span class="p">(</span><span class="n">del_data</span><span class="p">[</span><span class="s1">&#39;from_date&#39;</span><span class="p">],</span>
+                                                         <span class="n">del_data</span><span class="p">[</span><span class="s1">&#39;to_date&#39;</span><span class="p">]),</span>
+                                 <span class="n">stream_id</span><span class="o">=</span><span class="n">stream_id</span><span class="p">)</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
+    <span class="n">messages</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="s1">&#39;Events deleted for range </span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="n">del_data</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">HttpResponseRedirect</span><span class="p">(</span><span class="s1">&#39;/scheduler/week_calendar/&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="download_csv"><a class="viewcode-back" href="../../modules/views.html#week_scheduler.views.download_csv">[docs]</a><span class="nd">@csrf_exempt</span>
+<span class="k">def</span> <span class="nf">download_csv</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;View to send a file to client as per the download request option.&quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">download_req</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">POST</span><span class="o">.</span><span class="n">dict</span><span class="p">()</span>
+        <span class="c1"># messages.info(request, download_req)</span>
+        <span class="n">download_type</span> <span class="o">=</span> <span class="n">download_req</span><span class="p">[</span><span class="s1">&#39;download_op&#39;</span><span class="p">]</span>
+        <span class="n">stream_id</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">download_req</span><span class="p">[</span><span class="s1">&#39;down_stream_id&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39; - &#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="n">rows</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">file_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">settings</span><span class="o">.</span><span class="n">PROJECT_PATH</span><span class="p">,</span>
+                                 <span class="n">settings</span><span class="o">.</span><span class="n">DOWNLOAD_FILE_NAME</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">download_type</span> <span class="o">==</span> <span class="s1">&#39;month&#39;</span><span class="p">:</span>
+            <span class="n">start</span><span class="p">,</span> <span class="n">end</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">range_of_month</span><span class="p">(</span><span class="n">download_req</span><span class="p">[</span><span class="s1">&#39;month_year&#39;</span><span class="p">])</span>
+            <span class="n">suffix</span> <span class="o">=</span> <span class="n">download_req</span><span class="p">[</span><span class="s1">&#39;month_year&#39;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">download_type</span> <span class="o">==</span> <span class="s1">&#39;week&#39;</span><span class="p">:</span>
+            <span class="n">start</span><span class="p">,</span> <span class="n">end</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">range_of_week</span><span class="p">(</span><span class="n">download_req</span><span class="p">[</span><span class="s1">&#39;week_year&#39;</span><span class="p">])</span>
+            <span class="n">suffix</span> <span class="o">=</span> <span class="n">download_req</span><span class="p">[</span><span class="s1">&#39;week_year&#39;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">download_type</span> <span class="o">==</span> <span class="s1">&#39;day&#39;</span><span class="p">:</span>
+            <span class="n">start</span><span class="p">,</span> <span class="n">end</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">range_of_day</span><span class="p">(</span><span class="n">download_req</span><span class="p">[</span><span class="s1">&#39;download_date&#39;</span><span class="p">])</span>
+            <span class="n">suffix</span> <span class="o">=</span> <span class="n">download_req</span><span class="p">[</span><span class="s1">&#39;download_date&#39;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">download_type</span> <span class="o">==</span> <span class="s1">&#39;custom&#39;</span><span class="p">:</span>
+            <span class="n">start</span> <span class="o">=</span> <span class="n">download_req</span><span class="p">[</span><span class="s1">&#39;custom_from_date&#39;</span><span class="p">]</span>
+            <span class="n">end</span> <span class="o">=</span> <span class="n">download_req</span><span class="p">[</span><span class="s1">&#39;custom_to_date&#39;</span><span class="p">]</span>
+            <span class="n">suffix</span> <span class="o">=</span> <span class="s1">&#39;_&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">download_req</span><span class="p">[</span><span class="s1">&#39;custom_from_date&#39;</span><span class="p">],</span>
+                               <span class="n">download_req</span><span class="p">[</span><span class="s1">&#39;custom_to_date&#39;</span><span class="p">]])</span>
+
+        <span class="n">rows</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">extract_schedule_data</span><span class="p">(</span><span class="n">stream_id</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">)</span>
+        <span class="c1"># messages.info(request, (str(start), str(end), rows))</span>
+        <span class="n">header</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;stream_id&#39;</span><span class="p">,</span> <span class="s1">&#39;game_id&#39;</span><span class="p">,</span> <span class="s1">&#39;start_time&#39;</span><span class="p">,</span> <span class="s1">&#39;end_time&#39;</span><span class="p">,</span>
+                  <span class="s1">&#39;linked_room&#39;</span><span class="p">,</span> <span class="s1">&#39;dow&#39;</span><span class="p">,</span> <span class="s1">&#39;limit&#39;</span><span class="p">]</span>
+
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">file_path</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">,</span> <span class="n">newline</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">fhdl</span><span class="p">:</span>
+            <span class="n">writer</span> <span class="o">=</span> <span class="n">csv</span><span class="o">.</span><span class="n">DictWriter</span><span class="p">(</span><span class="n">fhdl</span><span class="p">,</span> <span class="n">fieldnames</span><span class="o">=</span><span class="n">header</span><span class="p">)</span>
+            <span class="n">writer</span><span class="o">.</span><span class="n">writeheader</span><span class="p">()</span>
+            <span class="n">writer</span><span class="o">.</span><span class="n">writerows</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">send_file</span><span class="p">(</span><span class="n">file_path</span><span class="p">,</span> <span class="n">suffix</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">error</span><span class="p">:</span>
+        <span class="n">messages</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="s1">&#39;File cannot be downloaded - &#39;</span> <span class="o">+</span> <span class="n">error</span><span class="p">)</span>
+        <span class="k">pass</span>
+
+    <span class="k">return</span> <span class="n">HttpResponseRedirect</span><span class="p">(</span><span class="s1">&#39;/scheduler/week_calendar/&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="send_file"><a class="viewcode-back" href="../../modules/views.html#week_scheduler.views.send_file">[docs]</a><span class="k">def</span> <span class="nf">send_file</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">suffix</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Send a file through Django without loading the whole file into</span>
+<span class="sd">    memory at once. The FileWrapper will turn the file object into an</span>
+<span class="sd">    iterator for chunks of 8KB.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">wrapper</span> <span class="o">=</span> <span class="n">FileWrapper</span><span class="p">(</span><span class="nb">open</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">))</span>
+    <span class="n">content_type</span> <span class="o">=</span> <span class="s1">&#39;text/csv&#39;</span>
+    <span class="n">response</span> <span class="o">=</span> <span class="n">HttpResponse</span><span class="p">(</span><span class="n">wrapper</span><span class="p">,</span> <span class="n">content_type</span><span class="o">=</span><span class="n">content_type</span><span class="p">)</span>
+    <span class="n">response</span><span class="p">[</span><span class="s1">&#39;Content-Disposition&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="s1">&#39;attachment; filename=</span><span class="si">%s</span><span class="s1">_</span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span>
+                                       <span class="p">(</span><span class="n">suffix</span><span class="p">,</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">filename</span><span class="p">)))</span>
+    <span class="k">return</span> <span class="n">response</span></div>
+
+
+<div class="viewcode-block" id="validation_form"><a class="viewcode-back" href="../../modules/views.html#week_scheduler.views.validation_form">[docs]</a><span class="nd">@csrf_exempt</span>
+<span class="k">def</span> <span class="nf">validation_form</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;View to render validation page to check and verify the conflicts&quot;&quot;&quot;</span>
+    <span class="n">resolved_data</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">POST</span><span class="o">.</span><span class="n">dict</span><span class="p">()</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">resolved_data</span><span class="p">)</span>
+    <span class="n">current_events</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">resolved_data</span><span class="p">[</span><span class="s1">&#39;current_events&#39;</span><span class="p">])</span>
+    <span class="n">override</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">resolved_data</span><span class="p">[</span><span class="s1">&#39;override_list&#39;</span><span class="p">])</span>
+    <span class="k">for</span> <span class="n">event</span> <span class="ow">in</span> <span class="n">current_events</span><span class="p">:</span>
+        <span class="n">event_id</span> <span class="o">=</span> <span class="n">event</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">event_id</span> <span class="ow">in</span> <span class="n">override</span><span class="p">:</span>
+            <span class="n">EventLogsModel</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">event_id</span><span class="o">=</span><span class="n">event_id</span><span class="p">)</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
+            <span class="n">this_event</span> <span class="o">=</span> <span class="n">event</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;True&#39;</span><span class="p">)</span>
+            <span class="n">process_schedule_data</span><span class="p">(</span><span class="o">*</span><span class="n">this_event</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">render</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="s1">&#39;conflicts_errors.html&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="approval_request"><a class="viewcode-back" href="../../modules/views.html#week_scheduler.views.approval_request">[docs]</a><span class="nd">@csrf_exempt</span>
+<span class="nd">@login_required</span><span class="p">(</span><span class="n">login_url</span><span class="o">=</span><span class="s1">&#39;/accounts/login/&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">approval_request</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;View to process the approval submission for created events in current</span>
+<span class="sd">       session.</span>
+<span class="sd">       Session continues of the approval submission is not made.&quot;&quot;&quot;</span>
+    <span class="k">global</span> <span class="n">APPROVAL_ID</span>
+    <span class="n">APPROVAL_ID</span> <span class="o">+=</span> <span class="mi">1</span>
+    <span class="n">user</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">user</span><span class="o">.</span><span class="n">username</span>
+    <span class="n">stream_id</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">POST</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;approve_stream_id&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39; - &#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="n">utils</span><span class="o">.</span><span class="n">update_approval_log</span><span class="p">(</span><span class="n">stream_id</span><span class="p">,</span> <span class="n">user</span><span class="p">,</span> <span class="n">APPROVAL_ID</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">HttpResponseRedirect</span><span class="p">(</span><span class="s1">&#39;/scheduler/week_calendar/&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="grant_approval"><a class="viewcode-back" href="../../modules/views.html#week_scheduler.views.grant_approval">[docs]</a><span class="nd">@csrf_exempt</span>
+<span class="nd">@login_required</span><span class="p">(</span><span class="n">login_url</span><span class="o">=</span><span class="s1">&#39;/accounts/login/&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">grant_approval</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;View to update data for the approved events by the superuser.&quot;&quot;&quot;</span>
+    <span class="n">stream_id</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">POST</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;approve_stream_id&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39; - &#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="n">approval_id</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">POST</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;approval_id&#39;</span><span class="p">)</span>
+    <span class="n">user</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">user</span><span class="o">.</span><span class="n">username</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">update_approval_log</span><span class="p">(</span><span class="n">stream_id</span><span class="p">,</span> <span class="n">user</span><span class="p">,</span> <span class="n">approval_id</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>
+    <span class="n">history</span> <span class="o">=</span> <span class="n">HistoryModel</span><span class="p">()</span>
+    <span class="n">history</span><span class="o">.</span><span class="n">approval_id</span> <span class="o">=</span> <span class="n">approval_id</span>
+    <span class="n">history</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">values</span><span class="p">()</span>
+    <span class="n">history</span><span class="o">.</span><span class="n">user_id</span> <span class="o">=</span> <span class="n">user</span>
+    <span class="n">history</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">using</span><span class="o">=</span><span class="s1">&#39;logging&#39;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">HttpResponseRedirect</span><span class="p">(</span><span class="s1">&#39;/scheduler/week_calendar/&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="user_log"><a class="viewcode-back" href="../../modules/views.html#week_scheduler.views.user_log">[docs]</a><span class="k">def</span> <span class="nf">user_log</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">prev_data</span><span class="p">,</span> <span class="n">next_data</span><span class="p">,</span> <span class="n">action</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;ORM Insert&quot;&quot;&quot;</span>
+    <span class="n">log</span> <span class="o">=</span> <span class="n">UserLogging</span><span class="p">()</span>
+    <span class="n">event</span> <span class="o">=</span> <span class="n">prev_data</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">log</span><span class="o">.</span><span class="n">approval_id</span> <span class="o">=</span> <span class="n">event</span><span class="p">[</span><span class="s1">&#39;approval_id&#39;</span><span class="p">]</span>
+    <span class="n">log</span><span class="o">.</span><span class="n">action</span> <span class="o">=</span> <span class="n">action</span>
+    <span class="n">log</span><span class="o">.</span><span class="n">event_id</span> <span class="o">=</span> <span class="n">event</span><span class="p">[</span><span class="s1">&#39;event_id&#39;</span><span class="p">]</span>
+    <span class="n">log</span><span class="o">.</span><span class="n">new_data</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">next_data</span><span class="p">)</span>
+    <span class="n">log</span><span class="o">.</span><span class="n">previous_data</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">prev_data</span><span class="p">)</span>
+    <span class="n">log</span><span class="o">.</span><span class="n">user_id</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">user</span><span class="o">.</span><span class="n">username</span>
+    <span class="n">log</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">using</span><span class="o">=</span><span class="s1">&#39;logging&#39;</span><span class="p">)</span></div>
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../../index.html">Game scheduler</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../index.html">Documentation overview</a><ul>
+  <li><a href="../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2019, npatel.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.8.5</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

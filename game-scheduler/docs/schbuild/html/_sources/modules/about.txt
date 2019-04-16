@@ -1,0 +1,6 @@
+############
+About
+############
+
+Bingo Game scheduler based on Django framework - Python Back-end
+Front end - fullcalendar.io, vanilla javascript
