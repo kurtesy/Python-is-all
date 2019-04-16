@@ -1,0 +1,804 @@
+{% extends "base.html" %}
+
+
+{% load i18n static %}
+
+{% block head_title %}{% trans "Fullcalendar" %}{% endblock %}
+
+{% block tab_id %}id="home_tab"{% endblock %}
+
+
+{% block extra_head %}
+        <link rel='stylesheet' type='text/css' href="{% static 'fullcalendar/dist/fullcalendar.css' %}" />
+        <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/jquery-datetimepicker/2.5.20/jquery.datetimepicker.css">
+        <script type='text/javascript' src="{% static 'moment/moment.js' %}"></script>
+        <script type='text/javascript' src="{% static 'fullcalendar/dist/fullcalendar.js' %}"></script>
+        <script type='text/javascript' src="http://wwwendt.de/tech/demo/jquery-contextmenu/jquery.ui-contextmenu.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.11.0/umd/popper.min.js" crossorigin="anonymous"></script>
+        <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-beta/js/bootstrap.min.js" crossorigin="anonymous"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-datetimepicker/2.5.20/jquery.datetimepicker.full.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-datetimepicker/2.5.20/jquery.datetimepicker.full.min.js"></script>
+        <script type='text/javascript' src="https://unpkg.com/tooltip.js"></script>
+        <script type='text/javascript' src="{% static 'fullcalendar/dist/fullcalendar-rightclick.js' %}"></script>
+        <script>
+            $( function()
+                  {
+                    $( "#from_date" ).datetimepicker({format:"Y-m-d H:i"});
+                    $( "#to_date" ).datetimepicker({format:"Y-m-d H:i"});
+                    $( "#download_date" ).datetimepicker({
+                            defaultDate: new Date(),
+                            format:"Y-m-d",
+                            timepicker:false});
+                     $( "#custom_from_date" ).datetimepicker({
+                            defaultDate: new Date(),
+                            format:"Y-m-d",
+                            timepicker:false});
+                     $( "#custom_to_date" ).datetimepicker({
+                            defaultDate: new Date(),
+                            format:"Y-m-d",
+                            timepicker:false});
+                  }
+              );  
+        </script>
+        {% if user.is_authenticated %}
+          Hi {{ user.username }}!
+          <b><a href="{% url 'logout' %}"><font color="blue">  logout</font></a></b>
+        {% else %}
+          <p>You are not logged in</p>
+         <b><a href="{% url 'login' %}"><font color="blue">login</font></a></b>
+        {% endif %}
+{% endblock %}
+
+{% block body %}
+<table class="calendar-fields">
+<tr> 
+<!--Stream Section Start-->
+<td><label for="stream">Stream id:</label></td>
+<td><select id="stream_id" name="stream_id" onchange="stream_change()">
+    <option selected="selected" value='{{ stream }}'>{{ stream }}</option>
+    {% for stream in stream_list %}
+        <option value='{{ stream }}'>{{ stream }}</option>
+    {% endfor %}
+</select></td>
+<!--Stream Section End-->
+
+<td>
+<div class="color-chart-wrapper">
+	<table class="color-chart"> 
+		<tr> 
+		<th>Color Name</th> 
+		<th>Status</th> 
+		</tr> 
+		<tr style="background:LemonChiffon;color:black"> 
+		<td><a style="color: black;" target="color-scheme">LemonChiffon</a></td> 
+		<td><a style="color: black;" target="color-scheme">Open</a></td> 
+		</tr> 
+		<tr style="background:silver;color:white"> 
+		<td><a style="color: black;" target="color-scheme">Silver</a></td> 
+		<td><a style="color: black;" target="color-scheme">Pending</a></td> 
+		</tr>   
+		<tr style="background:LightGreen;color:white"> 
+		<td><a style="color: black;" target="color-scheme">LightGreen</a></td> 
+		<td><a style="color: black;" target="color-scheme">Approved</a></td> 
+		</tr> 
+		<tr style="background:OrangeRed;color:white"> 
+		<td><a style="color: black;" target="color-scheme">OrangeRed</a></td> 
+		<td><a style="color: black;" target="color-scheme">Completed</a></td> 
+		</tr> 
+    </table> 
+</div>
+</td>
+
+
+<td>
+<!--Approval Request Section Start-->
+<form action="{% url "approval_request" %}" method="post">
+<input type="hidden" id="approve_stream_id" name="approve_stream_id">
+{% if not user.is_superuser %}
+    <input type="hidden" id="approve" name="approve">
+    <button class="approve-button" id="approval_request" style="float:right;margin-bottom:5px;background-color:#4286f4;color:white;">
+            <span class="glyphicon glyphicon-remove-circle"></span> Submit for Approval
+    </button>
+    <button class="revoke-button" id="revoke_approval" onclick="revoke()" style="float:right;margin-bottom:5px;background-color:#4286f4;color:white;">
+    <input type="hidden" id="revoke_request" name="revoke_request" value=0>
+            <span class="glyphicon glyphicon-remove-circle"></span> Revoke Request
+    </button>
+{% else %}
+    <!--Approval List Section Start-->
+    <label for="approve" style="float:right;margin-bottom:5px;margin-right:5px;"> -:Approval List</label>
+    <select id="approve" name="approve" onchange="approval_id_change()" style="float:right;margin-bottom:5px;margin-left:5px;">
+        {% for approval in approval_list %}
+            <option value='{{ approval }}'>{{ approval }}</option>
+        {% endfor %} 
+    </select>
+
+    <!--Approval List Section End-->
+    <!--Superuser Approval Start-->
+    <button class="approve-button" id="approval" onclick="grant_approval()" style="float:right;margin-bottom:5px;background-color:#4286f4;color:white;">
+            <span class="glyphicon glyphicon-remove-circle"></span> Approve
+    </button>
+    <!--Superuser Approval End-->
+{% endif %}   
+</form>
+<!--Approval Request Section End-->
+</td>
+
+<td>
+<!--Refresh and Reset Section Start-->
+<form action="{% url "reset_events" %}" method="post" id="reset_events"> 
+    {% csrf_token %}
+    <!--<input type="submit" value="Refresh" name="refresh" style="margin-left:800px;background-color: #555;color: white;">-->
+     <button type="submit" class="refresh-button" style="margin-bottom:5px;background-color:#4286f4;color:white;float:left;margin-left:15px;">
+         <span class="glyphicon glyphicon-refresh"></span> Refresh
+     </button>
+</form>
+<!--Refresh and Reset Section End-->
+</td>
+
+<td>
+<!--Delete Button Section Start-->
+<button class="open-button" onclick="deleteForm()" style="float:left;margin-bottom:5px;background-color:#4286f4;color:white;">
+        <span class="glyphicon glyphicon-remove-circle"></span> Delete Events
+ </button>
+<!--Delete Button Section End-->
+</td>
+
+<!--CSV Upload Section Start-->
+<form action="{% url "upload_csv" %}" method="post" id="upload_csv" enctype="multipart/form-data" class="form-horizontal">
+    <div class="form-group">
+     <td><label for="name" style="float:left;margin-down:20px;">Schedule File:</label></td>
+     <td><input type="file" name="csv_file" id="csv_file" required="True" class="form-control" style="font-size:10pt;height:35px;width:280px;float:left;">
+     </td>    
+    </div>
+    </br>
+    <td>
+    <div class="form-group">
+     <button class="upload-button">
+         <span class="glyphicon glyphicon-upload" style="margin-left:15px;margin-bottom:5px;background-color:#4286f4;color:white;float:left;">
+     </span>Upload</button>
+</form>
+<!--CSV Upload Section End-->
+</td>
+</tr>
+</table> 
+
+<!--CSV Download Section Start-->
+<form action="{% url "download_csv" %}" method="post" id="download_csv" enctype="multipart/form-data" class="form-horizontal">
+    <div class="form-group">
+     <label for="name">Download schedule:</label>
+         <select id="download_op" name="download_op" onchange="download_option()" style="height:35px;width:280px;float:left;">
+            <option value='month'>Month schedule</option>
+            <option value='week'>Week schedule</option>
+            <option value='day'>Day schedule</option>
+            <option value='custom'>Custom Range</option>
+        </select>
+    </div>
+    <input type="hidden" id="down_stream_id" name="down_stream_id">
+    <div id="month" style="float:left;">
+      <label for="month_year">Month</label>
+      <input type="month" name="month_year" value="2019-04">
+    </div>
+    <div id="week" style="display:none;float:left;">
+      <label for="week_year">Week</label>
+      <input type="week" name="week_year" value="2019-W14">
+    </div>
+    <div id="day" style="display:none;float:left;" novalidate>
+      <label for="day_year">Day</label>
+      <input type="text" name="download_date" id="download_date" autocomplete="off" value="2019-02-21">
+    </div>
+    <div id="custom" style="display:none;float:left;margin-bottom=140px" novalidate>
+      <label for ="custom_from_date">From date</label>
+      <input type="text" name="custom_from_date" id="custom_from_date" autocomplete="off" value="2019-02-21">
+      <label for ="custom_to_date">To date</label>
+      <input type="text" name="custom_to_date" id="custom_to_date" autocomplete="off" value="2019-02-22">
+    </div>
+    <div class="form-group">
+     <button class="download-button"> <span class="glyphicon glyphicon-download" style="margin-left:15px;margin-bottom:5px;background-color:#4286f4;color:white;float:left;"></span>Download</button>
+    </div>
+</form>
+<!--CSV Download Section End-->
+
+<!--Deletion of event Section Start-->
+<div class="form-popup" id="delForm">
+  <form action="{% url "bulk_delete" %}" class="form-container" autocomplete="off" method="post">
+    <h4>Delete Events</h4>
+    <input type="hidden" id="stream" name="stream" value="2">
+     <script>
+            window.cur_stream = document.getElementById("stream_id").value;
+            document.getElementById("stream").value = window.cur_stream;
+    </script>
+    <label for="from_date"><b>From Date</b></label>
+    <input type="text"  id="from_date" placeholder="Enter From Date" name="from_date" required>
+
+    <label for="to_date"><b>To Date</b></label>
+    <input type="text" id="to_date" placeholder="Enter To Date" name="to_date" required>
+
+    <button type="submit" class="btn">Delete</button>
+    <button type="button" class="btn cancel" onclick="deleteCloseForm()">Close</button>
+  </form>
+</div>
+<!--Deletion of event Section End-->
+
+<!--Main calendar JS of event Section Start-->
+<div id="calendar"></div>
+<script type='text/javascript'>
+window.cur_stream = document.getElementById('stream_id').value;
+var duration = '00:05:00';
+var prebuy_stats;
+var del_stream = window.cur_stream;
+document.getElementById("down_stream_id").value = window.cur_stream;
+document.getElementById("approve_stream_id").value = window.cur_stream;
+
+
+function deleteForm() {
+  window.cur_stream = document.getElementById('stream_id').value;
+  document.getElementById("delForm").style.display = "block";
+}
+function deleteCloseForm() {
+  document.getElementById("delForm").style.display = "none";
+}
+
+function download_option() {
+    var option = document.getElementById("download_op").value;
+    document.getElementById("down_stream_id").value = document.getElementById("stream_id").value;
+    console.log(document.getElementById("down_stream_id").value)
+    console.log(option);
+    $("#month").hide();
+    switch(option) {
+        case "week":
+            $("#week").show(); $("#month").hide(); $("#day").hide(); $("#custom").hide();
+            break;
+        case "day":
+            $("#day").show(); $("#month").hide(); $("#week").hide(); $("#custom").hide();
+            break;
+        case "custom":
+            $("#custom").show(); $("#month").hide(); $("#week").hide(); $("#day").hide();
+            break;
+        default:
+            $("#month").show(); $("#day").hide(); $("#week").hide(); $("#custom").hide();
+    }
+}
+
+function stream_change() {
+   console.log(document.getElementById('stream_id').value)
+	window.cur_stream = document.getElementById('stream_id').value;
+	document.getElementById("stream").value = window.cur_stream;
+	document.getElementById("down_stream_id").value = document.getElementById("stream_id").value;
+	$.ajax({
+		url: "{% url "return_events" %}",
+		type: 'POST',
+		async: false,
+		data: {
+			stream_id: window.cur_stream,
+			approval_id: document.getElementById("approve").value
+		},
+		success: function (data) {
+    		var arrayLength = data.length;
+    		for (var i = 0; i < arrayLength; i++)
+    		{
+        		data[i].id = data[i].event_id;
+    		}
+			window.my_events = data;
+		},
+		error: function () {
+			alert('there was an error while fetching events!');
+		},
+	});
+	$('#calendar').fullCalendar('removeEvents');
+	$('#calendar').fullCalendar('renderEvents', window.my_events);
+}
+
+function approval_id_change() {
+	window.cur_stream = document.getElementById('stream_id').value;
+	document.getElementById("stream").value = window.cur_stream;
+	document.getElementById("down_stream_id").value = document.getElementById("stream_id").value;
+	console.log(document.getElementById("approve").value);
+	$.ajax({
+		url: "{% url "return_events" %}",
+		type: 'POST',
+		async: false,
+		data: {
+			stream_id: window.cur_stream,
+			approval_id: document.getElementById("approve").value
+		},
+		success: function (data) {
+    		var arrayLength = data.length;
+    		for (var i = 0; i < arrayLength; i++)
+    		{
+        		data[i].id = data[i].event_id;
+    		}
+			window.my_events = data;
+		},
+		error: function () {
+			alert('there was an error while fetching events!');
+		},
+	});
+	$('#calendar').fullCalendar('removeEvents');
+	$('#calendar').fullCalendar('renderEvents', window.my_events);
+}
+
+function grant_approval() {
+    console.log('OK');
+    $.ajax({
+    	url: "{% url "grant_approval" %}",
+    	type: 'POST',
+    	data: {
+    		approval_id: document.getElementById("approve").value == null ? 0 : document.getElementById("approve").value,
+    		stream_id: window.cur_stream
+    	},
+    	success: function(data) {
+    	   console.log('Approval Success');
+    	   alert("Approval Success");
+    	},
+    	error: function () {
+    		alert('there was an error in approval!');
+    	},
+    });
+}
+
+function revoke() {
+    console.log('Revoke');
+    document.getElementById("revoke_request").value = 1
+}
+
+//Load existing events
+$.ajax({
+	url: "{% url "return_events" %}",
+	type: 'POST',
+	data: {
+		stream_id: window.cur_stream,
+		approval_id: document.getElementById("approve").value == '' ? 0 : document.getElementById("approve").value
+	},
+	success: function (data) {
+	   var arrayLength = data.length;
+		for (var i = 0; i < arrayLength; i++)
+		{
+    		data[i].id = data[i].event_id;
+		}
+		window.my_events = data;
+	},
+	error: function () {
+		alert('there was an error while fetching events!');
+	},
+});
+
+
+$(document).contextmenu({
+    delegate: ".hasmenu",
+    autoFocus: true,
+    preventContextMenuForPopup: true,
+    //preventSelect: true,
+    taphold: true,
+    menu: [
+            {title: "Copy", cmd: "copy", uiIcon: "ui-icon-copy"},
+            {title: "Paste", cmd: "paste", uiIcon: "ui-icon-clipboard"},
+            {title: "Delete", cmd: "delete", uiIcon: "ui-icon-closethick"},
+            {title: "Show eventId", cmd: "show", uiIcon: "ui-icon-info"}
+        ],
+    select: function(event, ui) {
+            var $target = ui.target;
+            var event_element;
+            var event_start;
+            var event_end;
+            if($target[0].className.indexOf("fc-time-grid-event") !== -1){
+                event_element = $target[0].dataset
+                event_id = Object.assign({}, event_element).eventId;
+            }
+            else if($target[0].className === "fc-bg"){
+                event_element = ui.target[0].offsetParent.dataset
+                event_id = Object.assign({}, event_element).eventId;
+            }
+            else if($target[0].className === ""){
+                event_element = ui.target[0].offsetParent.offsetParent.dataset
+                event_id = Object.assign({}, event_element).eventId;
+            }
+            else {
+                event_element = ui.target[0].parentElement.offsetParent.dataset
+                event_id = Object.assign({}, event_element).eventId;
+            }
+            
+            var temp = ui.target[0].offsetParent.innerHTML;
+            var stream_id = temp.split('<div class="fc-title">')[1].split('-')[0].trim();
+            var event_data = {stream_id: stream_id,
+                              event_id: event_id};
+            console.log(ui.target[0].offsetParent.offsetParent);
+            console.log(ui);
+            console.log(temp);
+            var event;
+            /*$.ajax({
+                	url: "{% url "single_event_object" %}",
+                	type: 'POST',
+                	data: event_data,
+                	success: function (data) {
+                	   var arrayLength = data.length;
+                		for (var i = 0; i < arrayLength; i++)
+                		{
+                    		data[i].id = data[i].event_id;
+                		}
+                		event = data;
+                	},
+                	error: function () {
+                		alert('there was an error while fetching events!');
+                	},
+                });    */        
+            
+            switch (ui.cmd) {
+                case "copy":
+                    CLIPBOARD = event;
+                    $.ajax({
+                        	url: "{% url "copy_event" %}",
+                        	type: 'POST',
+                        	data: event,
+                        	success: function (data) {
+                        	   console.log('copied event '+ event);
+                        	},
+                        	error: function () {
+                        		alert('there was an error while fetching events!');
+                        	},
+                        }); 
+                    break;
+                case "paste":
+                    CLIPBOARD = "";
+                    break
+                case "delete":
+                    CLIPBOARD = "";
+                    break
+                case "show":
+                    CLIPBOARD = "";
+                    console.log(event_data);
+                    break
+            }
+     },
+    beforeOpen: function (event, ui) {
+            var $menu = ui.menu,
+                $target = ui.target;
+            ui.menu.css('z-index', '10000000');
+            // Things to happen right before the menu pops up
+        }
+});
+
+$(document).ready(
+	function () {
+		// page is now ready, initialize the calendar...
+		$('#calendar').fullCalendar({
+			header: {
+				left: 'prev,next,today',
+				center: 'title',
+				right: 'agendaWeek,agendaDay,listDay'
+			},
+			defaultView: 'agendaWeek',
+			//defaultDate: '2018-03-12',
+			slotDuration: duration,
+			slotEventOverlap: false,
+			selectOverlap: false,
+			navLinks: true, // can click day/week names to navigate views
+			selectable: true,
+			selectHelper: true,
+			nowIndicator: true,
+			weekNumbers: true,
+			allDaySlot: false,
+			select: function (start, end) {
+				var title = window.cur_stream + '|No Game Configured';
+				var eventData;
+				if (title) {
+					eventData = {
+						title: title,
+						start: start,
+						end: end
+					};
+					$('#calendar').fullCalendar('renderEvent', eventData, true); // stick? = true
+					window.game_events = $('#calendar').fullCalendar('clientEvents');
+					var arrayLength = game_events.length;
+					for (var i = 0; i < arrayLength; i++) {
+						my_event = window.game_events[i];
+						if (start.format() === my_event.start.format() && end.format() === my_event.end.format()) {
+							$.ajax({
+								url: "{% url "get_events" %}", // the endpoint
+								type: "POST", // http method
+								data: {
+									the_post: JSON.stringify({
+										_id: my_event._id,
+										title: my_event.title,
+										start: my_event.start.format('YYYY-MM-DD HH:mm'),
+										end: my_event.end.format('YYYY-MM-DD HH:mm'),
+									})
+								}, // data sent with the post request
+
+								// handle a successful response
+								success: function (json) {
+									console.log("success"); // another sanity check
+									if(json.hasOwnProperty("message")) {
+    									alert(json.message);
+									}
+								},
+
+								// handle a non-successful response
+								error: function (xhr, errmsg, err) {
+									$('#results').html("<div class='alert-box alert radius' data-alert>Oops! We have encountered an error: " + errmsg +
+										" <a href='#' class='close'>&times;</a></div>"); // add the error to the dom
+									console.log(xhr.status + ": " + xhr.responseText); // provide a bit more info about the error to the console
+								}
+							});
+						}
+					}
+				}
+				$('#calendar').fullCalendar('unselect');
+			},
+			editable: true,
+			eventLimit: true, // allow "more" link when too many events
+			eventOverlap: false,
+			eventClick: function (event, jsEvent, view) {
+			 if(Number(event.start.unix()) < Number(Date.now()/1000))
+			 {
+    			 alert('Cannot create event for an older date.');
+    			 return false;
+			 }
+				$.ajax({
+					url: "{% url "click_event" %}",
+					type: 'POST',
+					data: {
+						_id: event._id,
+						title: event.title,
+						start: event.start.format('YYYY-MM-DD HH:mm'),
+						end: event.end.format('YYYY-MM-DD HH:mm')
+					},
+					success: function (data) {
+						console.log('click_success');
+						var w = window.open('http://127.0.0.1:8000/scheduling_form/', "_self");
+						w.document.open();
+						w.document.write(data);
+						w.document.close();
+					},
+					error: function () {
+						alert('there was an error while fetching events!');
+					},
+				});
+				return false;
+			},
+			events: window.my_events,
+			eventRender: function (event, element, view) {
+        			var originalClass = element[0].className;
+                 element[0].className = originalClass + ' hasmenu';
+				element.find(".fc-content").prepend("<span class='closeon' style='background-color:red; position: relative;float: right;'>X</span>");
+				element.find(".closeon").on('click', function () {
+					$('#calendar').fullCalendar('removeEvents', event._id);
+					if (confirm('Are you sure, you want to delete this event?')) {
+					$.ajax({
+						url: "{% url "remove_event" %}", // the endpoint
+						type: "POST", // http method
+						data: {
+							event_id: event.id,
+							start: event.start.format('YYYY-MM-DD HH:mm'),
+							end: event.end.format('YYYY-MM-DD HH:mm'),
+							title: event.title
+						}, // data sent with the post request
+
+						// handle a successful response
+						success: function (json) {
+							console.log("deleted"); // another sanity check
+						},
+						// handle a non-successful response
+						error: function (xhr, errmsg, err) {
+							$('#results').html("<div class='alert-box alert radius' data-alert>Oops! We have encountered an error: " + errmsg +
+								" <a href='#' class='close'>&times;</a></div>"); // add the error to the dom
+							console.log(xhr.status + ": " + xhr.responseText); // provide a bit more info about the error to the console
+						}
+					});
+					console.log(event._id + ' delete');
+					}
+				});
+				 element.popover({
+                title: event.title,
+                trigger: 'hover',
+                placement: 'top',
+                container: 'body',
+                html: true,
+                content: function(){
+                        var prebuy_stats, username, status, request_type;
+                        $.ajax({
+                						url: "{% url "get_stats" %}", // the endpoint
+                						type: "POST", // http method
+                						async: false,
+                						data: {
+                    						event_id: event.id,
+                							title: event.title,
+                							start: event.start.format('YYYY-MM-DD HH:mm'),
+                							end: event.end.format('YYYY-MM-DD HH:mm')
+                						}, // data sent with the post request
+                
+                						success: function (data) {
+                    						console.log(data);
+                							prebuy_stats = JSON.stringify(data.prebuy_stats, undefined, 2);
+                							status = data.status;
+                							username = data.user;
+                							
+                						},
+                						error: function (xhr, errmsg, err) {
+                							$('#results').html("<div class='alert-box alert radius' data-alert>Oops! We have encountered an error: " + errmsg +
+                								" <a href='#' class='close'>&times;</a></div>"); // add the error to the dom
+                							console.log(xhr.status + ": " + xhr.responseText); // provide a bit more info about the error to the console
+                						}
+                				});
+            			     console.log("prebuy_stats" + prebuy_stats);	
+                        var details = 'Start: ' + event.start.format('YYYY-MM-DD HH:mm') +
+                         '<br />End: ' + event.end.format('YYYY-MM-DD HH:mm') +
+                         '<br />Description: ' + event.title +
+                         '<br />Event id: ' + event.id +
+                         '<br />Created by: ' + username +
+                         '<br />Status: ' + status +
+                         '<br /><h6>Prebuy stats:</h6> <pre>' + prebuy_stats;
+                         return details;
+                         },
+            }).popover('toggle');
+			},
+			eventDrop: function (event, delta, revertFunc, jsEvent, ui, view) {
+			   if (confirm('Are you sure you want to edit the game time?')) {
+				$.ajax({
+					url: "{% url "drop_event" %}", // the endpoint
+					type: "POST", // http method
+					data: {
+						event_id: event.id,
+						new_start: event.start.format('YYYY-MM-DD HH:mm'),
+						new_end: event.end.format('YYYY-MM-DD HH:mm'),
+						delta: delta.toJSON(),
+					}, // data sent with the post request
+					// handle a successful response
+					success: function (json) {
+						console.log("Drop success"); // another sanity check
+					},
+
+					// handle a non-successful response
+					error: function (xhr, errmsg, err) {
+						$('#results').html("<div class='alert-box alert radius' data-alert>Oops! We have encountered an error: " + errmsg +
+							" <a href='#' class='close'>&times;</a></div>"); // add the error to the dom
+						console.log(xhr.status + ": " + xhr.responseText); // provide a bit more info about the error to the console
+					}
+				});
+            }
+			},
+			eventResize: function (event, delta, revertFunc, jsEvent, ui, view) {
+    			if (confirm('Are you sure you want to edit the game time?')) {
+				$.ajax({
+					url: "{% url "resize_event" %}", // the endpoint
+					type: "POST", // http method
+					data: {
+						event_id: event.id,
+						new_start: event.start.format('YYYY-MM-DD HH:mm'),
+						new_end: event.end.format('YYYY-MM-DD HH:mm'),
+						delta: delta.toJSON(),
+					}, // data sent with the post request
+					// handle a successful response
+					success: function (json) {
+						console.log("Rezise success"); // another sanity check
+					},
+
+					// handle a non-successful response
+					error: function (xhr, errmsg, err) {
+						$('#results').html("<div class='alert-box alert radius' data-alert>Oops! We have encountered an error: " + errmsg +
+							" <a href='#' class='close'>&times;</a></div>"); // add the error to the dom
+						console.log(xhr.status + ": " + xhr.responseText); // provide a bit more info about the error to the console
+					}
+				});
+            }
+			},
+			/*eventRightclick: function(event, jsEvent, view) {
+                console.log(event);
+                console.log(jsEvent);
+                console.log(view);
+                // Prevent browser context menu:
+                console.log('an event has been rightclicked!');
+            },*/
+			dayRightclick: function (date, jsEvent, view) {
+    			   var diff = moment.duration(duration).minutes();
+        			var new_start = date.add(30, 'minutes').format('YYYY-MM-DD HH:mm');
+        			var new_end = date.add(diff, 'minutes').format('YYYY-MM-DD HH:mm');
+        			/*$.ajax({
+                        	url: "{% url "copy_event" %}",
+                        	type: 'POST',
+                        	data: event,
+                        	success: function (data) {
+                        	   console.log('copied event '+event);
+                        	},
+                        	error: function () {
+                        		alert('there was an error while fetching events!');
+                        	},
+                });*/
+                console.log(view.currentTarget);
+                var element = view.currentTarget;
+                var originalClass = element.className;
+                element.className = originalClass + ' hasmenu';
+			},
+    
+			
+		});
+	});
+</script>
+<style>
+.fc-agenda-slots td div {
+     height: 40px !important;
+}
+
+.fc-agendaWeek-view tr {
+    height: 2px !important;
+}
+
+.closeon:hover {
+     transform: scale(1.5);
+}
+
+.closeon {
+     display: inline-block;
+}
+
+.fc_title {
+    display: inline-block;
+    width: 10%;
+}
+
+label {
+    /* Other styling... */
+    text-align: right;
+    clear: both;
+    float:left;
+    margin-right:15px;
+    margin-left:15px;
+}
+
+{box-sizing: border-box;}
+
+/* Button used to open the delete form - fixed at the bottom of the page */
+
+/* The popup form - hidden by default */
+.form-popup {
+  display: none;
+  position: fixed;
+  border: 3px solid #f1f1f1;
+  z-index: 9;
+}
+
+/* Add styles to the form container */
+.form-container {
+  max-width: 300px;
+  padding: 10px;
+  background-color: white;
+}
+
+/* Full-width input fields*/
+.form-container input[type=text] {
+  width: 100%;
+  padding: 15px;
+  margin: 5px 0 22px 0;
+  border: none;
+  background: #f1f1f1;
+} 
+
+/* When the inputs get focus, do something 
+.form-container input[type=text]:focus, .form-container input[type=password]:focus {
+  background-color: #ddd;
+  outline: none;
+}*/
+
+/* Set a style for the submit button */
+.form-container .btn {
+  background-color: #4CAF50;
+  color: white;
+  padding: 16px 20px;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  margin-bottom:10px;
+  opacity: 0.8;
+}
+
+/* Add a red background color to the cancel button */
+.form-container .cancel {
+  background-color: red;
+}
+
+/* Add some hover effects to buttons */
+.form-container .btn:hover, .open-button:hover {
+  opacity: 1;
+}
+</style>
+<!--Main calendar JS of event Section End-->
+{% endblock %}

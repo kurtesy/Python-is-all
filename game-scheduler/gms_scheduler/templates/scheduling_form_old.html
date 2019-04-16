@@ -1,0 +1,184 @@
+
+<html>
+<head><h2>Game Scheduling</h2>
+      <p align="right"><a href="/scheduler/week_calendar/">Back to Calendar</a>
+      </p>
+      <link rel="stylesheet" href="//code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+      <link rel="stylesheet" href="//jqueryui.com/resources/demos/style.css">
+      <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/jquery-datetimepicker/2.5.20/jquery.datetimepicker.css">
+      <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/ion-rangeslider/2.3.0/css/ion.rangeSlider.min.css">
+      <script src="https://code.jquery.com/jquery-1.12.4.js"></script>
+      <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-datetimepicker/2.5.20/jquery.datetimepicker.full.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-datetimepicker/2.5.20/jquery.datetimepicker.full.min.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/ion-rangeslider/2.3.0/js/ion.rangeSlider.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/ion-rangeslider/2.3.0/js/ion.rangeSlider.min.js"></script>
+      <script type="text/javascript">
+      $( function()
+          {
+            $( "#datepicker" ).datepicker();
+            $( "#start_datetimepicker" ).datetimepicker({format:"Y-m-d H:i"});
+            $( "#end_datetimepicker" ).datetimepicker({format:"Y-m-d H:i"});
+            $( "#limit_datetimepicker" ).datepicker({dateFormat: "yy-mm-dd"});
+            $( "#minslider" ).ionRangeSlider({
+                min: 0,
+                max: 60,
+                from: 5,
+                grid: true,
+                skin: "round",
+            });
+            $( "#gapslider" ).ionRangeSlider({
+                min: 0,
+                max: 60,
+                from: 0,
+                grid: true,
+                skin: "square"
+            });
+          } 
+      );
+      </script>
+      
+      <style>
+        form {
+          /* Just to center the form on the page */
+          margin: 0 auto;
+          width: 600px;
+          /* To see the outline of the form */
+          padding: 1em;
+          border: 1px solid #CCC;
+          border-radius: 1em;
+          background-color: PaleGreen;
+        }
+        
+        form div + div {
+          margin-top: 1em;
+        }
+        
+        label {
+          /* To make sure that all labels have the same size and are properly aligned */
+          display: inline-block;
+          width: 200px;
+          text-align: right;
+        }
+        
+        input, textarea {
+          /* To make sure that all text fields have the same font settings
+             By default, textareas have a monospace font */
+          font: 1em sans-serif;
+        
+          /* To give the same size to all text fields */
+          width: 300px;
+          box-sizing: border-box;
+        
+          /* To harmonize the look & feel of text field border */
+          border: 1px solid #999;
+        }
+        
+        input:focus, textarea:focus {
+          /* To give a little highlight on active elements */
+          border-color: #000;
+        }
+        
+        textarea {
+          /* To properly align multiline text fields with their labels */
+          vertical-align: top;
+        
+          /* To give enough room to type some text */
+          height: 5em;
+        }
+        
+        .button {
+          /* To position the buttons to the same position of the text fields */
+          padding-left: 90px; /* same size as the label elements */
+        }
+        
+        button {
+          /* This extra margin represent roughly the same space as the space
+             between the labels and their text fields */
+          margin-left: .5em;
+        }
+      </style>
+    <title>Game Scheduling</title>
+</head>
+<body>
+    <form action="/schedule_game/" method="get">
+        <!--Event id Hidden-->
+        <input type="hidden" id="event_id" name="event_id" value={{ event_id }}>
+        <input type="hidden" id="start" name="start" value={{ start }}>
+        <input type="hidden" id="end" name="end" value={{ end }}>
+        <label for="stream_id">Stream id:</label>
+        <select id="stream_id" name="stream_id">
+            {% if stream %}
+                <option disabled selected value>{{ stream }}</option>
+            {% endif %}
+       <!--     {% for stream in stream_list %}
+                <option value='{{ stream }}'>{{ stream }}</option>
+            {% endfor %} -->
+        </select>
+        <br>
+        <label for="game_id">Game id:</label>
+        <select id="game_id" name="game_id">
+            {% if game %}
+                <option disabled selected value>{{ game }}</option>
+            {% endif %}
+            {% for game in game_list %}
+                <option value='{{ game }}'>{{ game }}</option>
+            {% endfor %}
+        </select>
+        <br>
+        <label for="start_datetimepicker">Start time:</label>
+        <input type="text" required id="start_datetimepicker" name="start_datetimepicker" value={{ starttime }}>
+        <br>
+        <label for="end_datetimepicker">End time:</label>
+        <input type="text" id="end_datetimepicker" name="end_datetimepicker" value={{ endtime }}>
+        <br>
+        <label for="minslider">Game Interval(in minutes):</label>
+        <input type="text" id="minslider" name="game_interval">
+        <br>
+        <label for="gapslider">Gap Interval(in minutes):</label>
+        <input type="text" id="gapslider" name="gap_interval">
+        <br>
+        <label for="linked_room">Linked Room:</label>
+        <select id="linked_room" name="linked_room">
+            <option value='0'>None</option>
+            {% for stream in stream_list %}
+              <option value='{{ stream }}'>{{ stream }}</option>
+            {% endfor %}
+        </select>
+        <br>
+        <label for="day_rec">Day Recurrence:</label>
+        <select id="day_rec" name="day_rec">
+            {% for minute in minute_range %}
+              <option value=''>Every {{ minute }} minutes</option>
+            {% endfor %}
+        </select>
+        <br>
+        <label for="recur">Recurrance pattern:</label>
+        <select id="recur" name="recur">
+          <option>Weekly</option>
+          <option>Quarterly</option>
+          <option>Monthly</option>
+          <option>Yearly</option>
+          <option>Daily</option>
+        </select>
+        <br>
+        <label for="dow">Day of the week:</label><br>
+            <input type="checkbox" name="dow" value="1">Monday<br>
+            <input type="checkbox" name="dow" value="2">Tuesday<br>
+            <input type="checkbox" name="dow" value="3">Wednesday<br>
+            <input type="checkbox" name="dow" value="4">Thursday<br>
+            <input type="checkbox" name="dow" value="5">Friday<br>
+            <input type="checkbox" name="dow" value="6">Saturday<br>
+            <input type="checkbox" name="dow" value="0">Sunday
+        <br>
+        <label for="limit_datetimepicker">Limit for recurrance:</label>
+        <input type="text" id="limit_datetimepicker" name="limit_datetimepicker">
+        <br>
+        <label for="datepicker">Custom Calender Date pick</label><br>
+        <input type="text" id="datepicker">
+        <br>
+        <br>        
+        <p align="center"><input type="submit" value="Submit"></p>
+    </form>
+</body>
+</html>

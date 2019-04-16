@@ -1,0 +1,141 @@
+
+<html>
+<head><h2>Conflicting Events</h2>
+      <p align="right"><a href="/scheduler/week_calendar/{{ stream }}">Back to Calendar</a>
+      </p>
+      <link rel="stylesheet" href="//code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+      <script src="https://code.jquery.com/jquery-1.12.4.js"></script>
+      <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+      <style>
+        #conflict {
+          font-family: "Trebuchet MS", Arial, Helvetica, sans-serif;
+          border-collapse: collapse;
+          width: 100%;
+        }
+        
+        #conflict td, #conflict th {
+          border: 1px solid #ddd;
+          padding: 8px;
+        }
+        
+        #conflict tr:nth-child(even){background-color: #f2f2f2;}
+        
+        #conflict tr:hover {background-color: #ddd;}
+        
+        #conflict th {
+          padding-top: 12px;
+          padding-bottom: 12px;
+          text-align: left;
+          background-color: #4CAF50;
+          color: white;
+          }
+        
+        .wrapper {
+                text-align: center;
+            }
+          
+        .open-button {
+            margin-up:10px;
+            margin-bottom:5px;
+            background-color:#4286f4;
+            color:white;
+            text-size: 40px;
+            }
+        #maintable {width: 800px; margin: 0 auto;}  
+  
+         #maintable td.red {color: #ff9933;}  
+         #maintable td.green {color:#00F;} 
+    </style>
+    <script>
+        window.ignore_list = [];
+        window.override_list = [];
+        var event_list = {{ event_list|safe }};
+        var current_events = {{ current_events|safe }};
+        function ignore(event_id) {
+            var event_id = event_id[0].id;
+            console.log("applied_action_" + event_id);
+            window.ignore_list.push(event_id);
+            let action_ele = document.getElementById("applied_action_" + event_id);
+            action_ele.innerText = "Ignore";
+        }
+        function override(event_id) {
+            var event_id = event_id[0].id;
+            console.log("applied_action_" + event_id);
+            window.override_list.push(event_id);
+            let action_ele = document.getElementById("applied_action_" + event_id);
+            action_ele.innerText = "Override";
+        }
+        function update() {
+            var applied_actions = window.ignore_list;
+            applied_actions.concat(window.override_list);
+            len_applied_actions = applied_actions.length;
+            console.log(applied_actions);
+            console.log(event_list);
+            len_events = event_list.length;
+            if(len_applied_actions < len_events){
+                var leftover = event_list.filter(x => applied_actions.indexOf(x) < 0 );
+                console.log(leftover);
+                alert('Are you sure you want to apply these changes, unaction events will be ignored: ' + applied_actions);
+                window.ignore_list.concat(leftover);
+            }
+            $.ajax({
+            		url: "{% url "validation_form" %}",
+            		type: 'POST',
+            		data: {
+            			ignore_list: JSON.stringify(window.ignore_list),
+            			override_list: JSON.stringify(window.override_list),
+            			current_events: JSON.stringify(current_events)
+            		},
+            		success: function (data) {
+                		console.log("Success Conflicts resolved");
+            		},
+            		error: function () {
+            			alert('There was an error while fetching resolving conflict!');
+            		},
+            	});
+        }
+    </script>
+    <title>Conflicting Events</title>
+</head>
+<body>
+    <table style="width:100%" id="conflict">
+        <tr>
+            <th>Event Id</th>
+            <th>Game Id</th>
+            <th>Stream Id</th>
+            <th>Game start time</th>
+            <th>Game end time</th>
+            <th>Linked Room</th>
+            <th>Status</th>
+            <th>Last Updated</th>
+            <th>Conflicting row</th>
+            <th>Ignore</th> 
+            <th>Override</th>
+            <th>Applied action</th>
+         </tr>
+    {% for conflict in conflicts %}
+        <tr>
+        {% for key,data in conflict.items %}   
+                <td class="red">{{ data }}</td>
+        {% endfor %}
+        <td><button type="button" class="btn ignore" id={{ conflict.event_id }} onclick="ignore({{ conflict.event_id }})">Ignore</button></td>
+        <td><button type="button" class="btn over_ride" id={{ conflict.event_id }} onclick="override({{ conflict.event_id }})">Override</button></td>
+        <td><label id="applied_action_{{ conflict.event_id }}">None</label></td>
+        </tr>
+    {% endfor %}
+    {% for current_event in current_events %}
+        <tr>
+        {% for data in current_event %}   
+                <td class="green">{{ data }}</td>
+        {% endfor %}
+        </tr>
+    {% endfor %}
+    </table>
+    <br>
+    <div class="wrapper">
+    <button class="open-button" onclick="update()">
+        <span class="glyphicon glyphicon-remove-circle"></span> Submit
+     </button>
+     </div>
+</body>
+</html>

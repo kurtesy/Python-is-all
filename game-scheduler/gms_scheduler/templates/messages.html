@@ -1,0 +1,90 @@
+
+<html>
+<head><h2>Conflicting Events</h2>
+  <p align="right"><a href="/scheduler/week_calendar/">Back to Calendar</a>
+  </p>
+  <link rel="stylesheet" href="//code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+  <script src="https://code.jquery.com/jquery-1.12.4.js"></script>
+  <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+    <style>
+                    /* Popup box BEGIN */
+            .hover_bkgr_fricc{
+                background:rgba(0,0,0,.4);
+                cursor:pointer;
+                display:none;
+                height:100%;
+                position:fixed;
+                text-align:center;
+                top:0;
+                width:100%;
+                z-index:10000;
+            }
+            .hover_bkgr_fricc .helper{
+                display:inline-block;
+                height:100%;
+                vertical-align:middle;
+            }
+            .hover_bkgr_fricc > div {
+                background-color: #fff;
+                box-shadow: 10px 10px 60px #555;
+                display: inline-block;
+                height: auto;
+                max-width: 551px;
+                min-height: 100px;
+                vertical-align: middle;
+                width: 60%;
+                position: relative;
+                border-radius: 8px;
+                padding: 15px 5%;
+            }
+            .popupCloseButton {
+                background-color: #fff;
+                border: 3px solid #999;
+                border-radius: 50px;
+                cursor: pointer;
+                display: inline-block;
+                font-family: arial;
+                font-weight: bold;
+                position: absolute;
+                top: -20px;
+                right: -20px;
+                font-size: 25px;
+                line-height: 30px;
+                width: 30px;
+                height: 30px;
+                text-align: center;
+            }
+            .popupCloseButton:hover {
+                background-color: #ccc;
+            }
+            .trigger_popup_fricc {
+                cursor: pointer;
+                font-size: 20px;
+                margin: 20px;
+                display: inline-block;
+                font-weight: bold;
+            }
+            /* Popup box BEGIN */
+    </style>
+    <script>
+       $(window).load(function () {
+            $('.hover_bkgr_fricc').show();
+            $('.hover_bkgr_fricc').click(function(){
+                $('.hover_bkgr_fricc').hide();
+            });
+            $('.popupCloseButton').click(function(){
+                $('.hover_bkgr_fricc').hide();
+            });
+        });
+    </script>
+</head>
+<body>
+        <div class="hover_bkgr_fricc">
+            <span class="helper"></span>
+            <div>
+                <div class="popupCloseButton">X</div>
+                <p>{{ message }}<br />inside the popup box!</p>
+            </div>
+        </div>
+</body>
+</html>

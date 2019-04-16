@@ -1,0 +1,89 @@
+
+<html>
+<head><h2>User Activity</h2>
+      <p align="right"><a href="/scheduler/week_calendar/{{ stream }}">Back to Calendar</a>
+      </p>
+      <link rel="stylesheet" href="//code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+      <script src="https://code.jquery.com/jquery-1.12.4.js"></script>
+      <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+      <style>
+        #conflict {
+          font-family: "Trebuchet MS", Arial, Helvetica, sans-serif;
+          border-collapse: collapse;
+          width: 100%;
+        }
+        
+        #conflict td, #conflict th {
+          border: 1px solid #ddd;
+          padding: 8px;
+        }
+        
+        #conflict tr:nth-child(even){background-color: #f2f2f2;}
+        
+        #conflict tr:hover {background-color: #ddd;}
+        
+        #conflict th {
+          padding-top: 12px;
+          padding-bottom: 12px;
+          text-align: left;
+          background-color: #4CAF50;
+          color: white;
+          }
+        
+        .wrapper {
+                text-align: center;
+            }
+          
+        .open-button {
+            margin-up:10px;
+            margin-bottom:5px;
+            background-color:#4286f4;
+            color:white;
+            text-size: 40px;
+            }
+    </style>
+    <script>
+
+    </script>
+    <title>User Activity</title>
+</head>
+<body>
+    <table style="width:100%" id="conflict">
+        <tr>
+            <th>Activity Id</th>
+            <th>Event Id</th>
+            <th>User Id</th>
+            <th>Approval Id</th>
+            <th>Action</th>
+            <th>Previous Data</th>
+            <th>New Data</th>
+            <th>Creation Time</th>
+         </tr>
+    {% for row in activity_logs %}
+        <tr>
+        {% for key,data in row.items %}   
+                <td>{{ data }}</td>
+        {% endfor %}
+        </tr>
+    {% endfor %}
+    </table>
+    <br>
+    <table style="width:100%" id="conflict">
+        <tr>
+            <th>Id</th>
+            <th>Approval Id</th>
+            <th>User Id</th>
+            <th>Data</th>
+            <th>Action</th>
+            <th>Creation Time</th>
+         </tr>
+    {% for row in approval_history %}
+        <tr>
+        {% for key,data in row.items %}   
+                <td>{{ data }}</td>
+        {% endfor %}
+        </tr>
+    {% endfor %}
+    </table>
+</body>
+</html>
