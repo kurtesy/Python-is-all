@@ -6,6 +6,7 @@ Decription: Validation cases for game creation and updation.
 """
 import datetime
 import json
+from dateutil import parser
 from week_scheduler import utils
 from .models import EventLogsModel
 
@@ -22,11 +23,11 @@ def validate_csv(file_data):
         else:
             print(check_id(row['stream_id']) , check_id(row['game_id'])
                , check_datetime(row['start_time']) , check_datetime(row['end_time'])
-               , (not row['limit'].strip() or check_id(row['linked_room'])) , check_list(row['dow'])
+               , (not row['limit'].strip() or check_id(row['linked_room']))
                , (not row['limit'].strip() or check_datetime(row['limit'])))
             if not (check_id(row['stream_id']) and check_id(row['game_id'])
                and check_datetime(row['start_time']) and check_datetime(row['end_time'])
-               and (not row['limit'].strip() or check_id(row['linked_room'])) and check_list(row['dow'])
+               and (not row['limit'].strip() or check_id(row['linked_room']))
                and (not row['limit'].strip() or check_datetime(row['limit']))):
                 error_rows.append(ctr)
     return error_rows
@@ -43,9 +44,9 @@ def check_id(field):
 def check_datetime(field):
     field = field.replace('"', '')
     try:
-        datetime.datetime.strptime(field, '%Y-%m-%d %H:%M')
+        parser.parser(field)
         return True
-    except (TypeError, ValueError):
+    except Exception:
         return False
 
 
@@ -92,9 +93,11 @@ def fetch_prev_next_event(stream_id, start, end):
     prev_event, next_event = None, None
     obj = EventLogsModel.objects
     prev_events = obj.filter(start__lte=start,
-                             stream_id=stream_id).order_by('-start')
+                             stream_id=stream_id,
+                             status='approved').order_by('-start')
     next_events = obj.filter(start__gte=start,
-                             stream_id=stream_id).order_by('start')
+                             stream_id=stream_id,
+                             status='approved').order_by('start')
     if next_events:
         next_event = next_events.values()[0]
     if prev_events:

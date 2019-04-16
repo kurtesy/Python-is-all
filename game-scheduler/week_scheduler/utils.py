@@ -4,8 +4,8 @@
 Decription: Database model for calendar events
 """
 import datetime
-import random
 import json
+from dateutil import parser
 from django.db import connections
 from dateutil.relativedelta import relativedelta
 from .models import EventLogsModel, ScheduleModel
@@ -14,12 +14,16 @@ from .models import EventLogsModel, ScheduleModel
 def add_color(events):
     """Adds the color attribute to variou events to be rendered."""
     new_events = []
-    rgb = lambda: random.randint(128, 255)
+    status_color = {'open': 'LemonChiffon',
+                    'pending': 'silver',
+                    'approved': 'LightGreen',
+                    'completed': 'OrangeRed'}
+    # rgb = lambda: random.randint(128, 255)
     for event in events:
         if 'Linked to' in event['title']:
-            event.update({'textColor': 'green'})
-            event.update({'borderColor': 'green'})
-        event.update({'color': '#%02X%02X%02X' % (rgb(), rgb(), rgb())})
+            event.update({'textColor': 'navy'})
+            event.update({'borderColor': 'navy'})
+        event.update({'color': status_color[event['status']]})
         new_events.append(event)
     return new_events
 
@@ -200,21 +204,21 @@ def extract_info(title):
             'linked_room': linked_room, }
 
 
-def get_approval_list():
+def get_approval_list(is_super=None, user=None):
     """Fetch the approval id from the event logs in DB."""
-    approval_list = EventLogsModel.objects.values_list('approval_id')
-    approval_list = set(map(lambda x: x[0], approval_list))
+    if is_super:
+        approval_list = EventLogsModel.objects.values_list('approval_id')
+        approval_list = set(map(lambda x: x[0], approval_list))
+    else:
+        approval_list = EventLogsModel.objects.filter(user_id=user).values_list('approval_id')
     return list(approval_list)
 
 
 def todatetime(date_str):
     """Cleans and converts the string date-time to python datetime object."""
-    date_str = date_str.replace('T', ' ')
     try:
-        return datetime.datetime.strptime(date_str, '%Y-%m-%d %H:%M')
-    except ValueError:
-        return datetime.datetime.strptime(date_str, '%Y-%m-%d')
-    except TypeError:
+        return parser.parse(date_str)
+    except Exception:
         return None
 
 
@@ -229,13 +233,13 @@ def update_event_log(event_id, stream, game, linked_room, start, end, dow=None,
     rows = EventLogsModel.objects.filter(start=start, end=end)
     # print(rows.values())
     if new_start and new_end:
-        rows.update(start=new_start, end=new_end)
+        rows.update(start=new_start, end=new_end, status='open')
         print(new_start, new_end)
         return
     if new_start and not new_end:
-        rows.update(start=new_start)
+        rows.update(start=new_start, status='open')
     elif new_end:
-        rows.update(end=new_end)
+        rows.update(end=new_end, status='open')
     else:
         if linked_room != '0':
             title = stream + '|Linked to - ' + linked_room
@@ -249,23 +253,83 @@ def update_event_log(event_id, stream, game, linked_room, start, end, dow=None,
         rows.update(dow=dow.replace("'", '"'))
 
 
-def update_approval_log(user_id, approval_id, superuser=False):
+def update_approval_log(stream_id, user_id, approval_id, superuser=False,
+                        action='approve', event_id=None):
     """Update the approval status, user and approval id for
         - Superuser who approves the request
         - Other user who submites the request."""
     if superuser:
-        rows = EventLogsModel.objects.filter(approval_id=approval_id)
+        rows = EventLogsModel.objects.filter(stream_id=stream_id,
+                                             approval_id=approval_id)
+        print(rows.values())
+        if action == 'approve':
+            rows.update(status='approved')
+            event_ids = rows.values_list('event_id')
+            update_game_status(event_ids)
+            return rows
+        if action == 'delete':
+            rows.delete()
+            event_ids = rows.values_list('event_id')
+            ScheduleModel.objects.filter(event_id__in=event_ids).delete()
+            return
+    else:
+        if action == 'delete':
+            rows = EventLogsModel.objects.filter(stream_id=stream_id,
+                                                 event_id=event_id)
+            rows.update(status='pending', approval_id=next_approval_id)
+    pending_rows = EventLogsModel.objects.filter(stream_id=stream_id,
+                                                 user_id=user_id,
+                                                 approval_id__isnull=False,
+                                                 status='pending')
+    rows = EventLogsModel.objects.filter(stream_id=stream_id, user_id=user_id,
+                                         approval_id__isnull=True)
+    if len(pending_rows) != 0 and len(rows) == 0:
+        return 'pending approval'
+    if len(rows) == 0:
+        return 'no games created'
+    rows.update(approval_id=approval_id, status='pending')
+    return rows
+
+
+def update_game_status(event_ids, status='active'):
+    """Update the game status as per the approval."""
+    rows = ScheduleModel.objects.filter(event_id__in=event_ids)
+    rows.update(status=status)
+
+
+def update_approval_status(stream_id, user_id, approval_id, superuser=False):
+    """Update the approval status, user and approval id for
+        - Superuser who approves the request
+        - Other user who submites the request."""
+    if superuser:
+        rows = EventLogsModel.objects.filter(stream_id=stream_id,
+                                             approval_id=approval_id)
+        print(rows.values())
         rows.update(status='approved')
-        event_ids = rows.value_list('event_id')
+        event_ids = rows.values_list('event_id')
         update_game_status(event_ids)
-        return
-    rows = EventLogsModel.objects.filter(user_id=user_id,
+        return rows
+    rows = EventLogsModel.objects.filter(stream_id=stream_id, user_id=user_id,
                                          approval_id__isnull=True)
     rows.update(approval_id=approval_id, status='pending')
     return rows
 
 
-def update_game_status(event_ids):
-    """Update the game status as per the approval."""
-    rows = ScheduleModel.objects.filter(event_id__in=event_ids)
-    rows.update(status='active')
+def next_approval_id():
+    """Returns the incremented last event id added to the event logs."""
+    args = EventLogsModel.objects
+    # Calculates the maximum out of the already-retrieved objects
+    approval_id = list(filter(lambda x: x, list(args.values_list('approval_id',
+                                                                 flat=True))))
+    if not approval_id:
+        last_approval = 0
+    else:
+        last_approval = max(approval_id)
+    approval_id = last_approval + 1
+    return approval_id
+
+
+def update_on_revoke(stream_id, user):
+    rows = EventLogsModel.objects.filter(stream_id=stream_id, user_id=user,
+                                         status='pending')
+    rows.update(approval_id=None, status='open')

@@ -7,12 +7,14 @@ from django.db import models
 
 
 class UserLogging(models.Model):
-    event_id = models.CharField(max_length=10, primary_key=True)
+    activity_id = models.AutoField(primary_key=True, null=False)
+    event_id = models.CharField(max_length=10, null=False)
     user_id = models.TextField(null=False)
     approval_id = models.IntegerField(null=True)
     action = models.TextField(null=False)
     previous_data = models.TextField(null=False)
     new_data = models.TextField(null=True)
+    creation_time = models.DateTimeField(null=False)
 
     class Meta:
         db_table = 'user_activity'
@@ -43,8 +45,8 @@ class EventLogsModel(models.Model):
     event_id = models.CharField(max_length=10, primary_key=True)
     stream_id = models.IntegerField()
     title = models.TextField()
-    start = models.TextField()
-    end = models.TextField()
+    start = models.DateTimeField()
+    end = models.DateTimeField()
     dow = models.TextField()
     user_id = models.TextField(null=False)
     approval_id = models.IntegerField(null=True)
@@ -57,9 +59,12 @@ class EventLogsModel(models.Model):
 
 
 class HistoryModel(models.Model):
+    id = models.AutoField(primary_key=True, null=False)
     approval_id = models.IntegerField(null=False)
     user_id = models.TextField(null=False)
     data = models.TextField(null=False)
+    action = models.TextField(null=False)
+    creation_time = models.DateTimeField(null=False)
 
     class Meta:
         db_table = 'history'

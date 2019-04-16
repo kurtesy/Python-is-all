@@ -4,7 +4,7 @@ from django.conf.urls import url
 from week_scheduler import views
 
 urlpatterns = [
-    url(r'^week_calendar/$', views.week_calendar, name='week_calendar', ),
+    url(r'^week_calendar/(?P<stream>\d+\s-\s[\w\s]+)', views.week_calendar, name='week_calendar', ),
     url(r'^scheduling_form/$', views.scheduling_form, name='scheduling_form'),
     url(r'^schedule_game/$', views.schedule_game, name='schedule_game'),
     url(r'^get_events/$', views.get_events, name='get_events'),
@@ -18,10 +18,11 @@ urlpatterns = [
     url(r'^copy_event/$', views.copy_event, name='copy_event'),
     url(r'^paste_event/$', views.paste_event, name='paste_event'),
     url(r'^upload_csv/$', views.upload_csv, name='upload_csv'),
-    url(r'^get_prebuy_stats/$', views.get_prebuy_stats, name='get_prebuy_stats'),
+    url(r'^get_stats/$', views.get_stats, name='get_stats'),
     url(r'^bulk_delete/$', views.bulk_delete, name='bulk_delete'),
     url(r'^download_csv/$', views.download_csv, name='download_csv'),
     url(r'^validation_form/$', views.validation_form, name='validation_form'),
     url(r'^approval_request/$', views.approval_request, name='approval_request'),
     url(r'^grant_approval/$', views.grant_approval, name='grant_approval'),
+    url(r'^log_view/$', views.log_view, name='log_view'),
 ]
