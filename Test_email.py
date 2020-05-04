@@ -3,7 +3,7 @@ from email.mime.text import MIMEText
 SMTP_SERVER = "smtp.mail.yahoo.com"
 SMTP_PORT = 587
 SMTP_USERNAME = "nis.nitb"
-SMTP_PASSWORD = "cknp2646325"
+SMTP_PASSWORD = "********"
 EMAIL_FROM = "nis.nitb@yahoo.com"
 EMAIL_TO = "np210291@gmail.com"
 EMAIL_SUBJECT = "REMINDER:"
