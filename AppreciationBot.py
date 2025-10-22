@@ -1,6 +1,6 @@
 import os
 from slackclient import SlackClient
-SLACK_BOT_TOKEN = 'xoxb-66262890164-K8hsLVl4J9oouk2YOC6OiP3a'
+SLACK_BOT_TOKEN = 'YOUR_TOKEN'
 
 BOT_NAME = 'appreciationbot'
 
@@ -17,3 +17,4 @@ if __name__ == "__main__":
                 print("Bot ID for '" + user['name'] + "' is " + user.get('id'))
     else:
         print("could not find bot user with the name " + BOT_NAME)
+
